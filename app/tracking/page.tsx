@@ -20,6 +20,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { STATUS_METADATA, TrackingStatus } from "./types/enum";
+import type { TrackingRowDTO } from "@/lib/api";
+import { useBookingsQuery, BookingsError } from "@/lib/queries";
 import {
   ChevronLeft,
   ChevronRight,
@@ -38,86 +40,49 @@ type TrackingRow = {
   totalPrice: number;
 };
 
-const sampleConcerts = [
-  "BLACKPINK WORLD TOUR",
-  "AESPA SYNK PARADISE",
-  "TXT ACT SWEET MIRAGE",
-  "IU H.E.R.",
-  "Ed Sheeran Mathematics",
-  "Coldplay MUSIC of the SPHERES",
-  "GOT7 ENCORE",
-];
-
-const sampleShowTimes = [
-  "25 เม.ย. 2569 - 19:00",
-  "02 พ.ค. 2569 - 18:30",
-  "14 มิ.ย. 2569 - 20:00",
-  "08 ก.ค. 2569 - 17:00",
-];
-
-const sampleZones = [
-  "VIP Standing",
-  "Seat A",
-  "Seat B",
-  "Standing",
-  "Zone Gold",
-];
-
-const allStatuses = Object.values(TrackingStatus) as TrackingStatus[];
-
-const mockTracking: readonly TrackingRow[] = [
-  ...allStatuses.map((status, index) => {
-    const now = new Date();
-    let paymentDeadline: Date | undefined;
-
-    if (status === TrackingStatus.WAIT_FULL_PAYMENT) {
-      paymentDeadline = new Date(now);
-      paymentDeadline.setDate(now.getDate() + (index === 1 ? 2 : 10));
-    } else if (status === TrackingStatus.WAIT_SERVICE_FEE) {
-      paymentDeadline = new Date(now);
-      paymentDeadline.setDate(now.getDate() + 5);
-    }
-
-    const price = status === TrackingStatus.WAIT_SERVICE_FEE ? 500 : 4500;
-
-    return {
-      bookingId: `YJI-STATUS-${index + 1}`,
-      concertName: sampleConcerts[index % sampleConcerts.length],
-      showTime: sampleShowTimes[index % sampleShowTimes.length],
-      zone: sampleZones[index % sampleZones.length],
-      status,
-      paymentDeadline,
-      totalPrice: price,
-    };
-  }),
-  ...[2, 1].map((daysAway, idx) => {
-    const deadline = new Date();
-    deadline.setDate(deadline.getDate() + daysAway);
-    return {
-      bookingId: `YJI-URGENT-${idx + 1}`,
-      concertName: sampleConcerts[(idx + 3) % sampleConcerts.length],
-      showTime: sampleShowTimes[(idx + 1) % sampleShowTimes.length],
-      zone: sampleZones[(idx + 2) % sampleZones.length],
-      status: TrackingStatus.WAIT_FULL_PAYMENT,
-      paymentDeadline: deadline,
-      totalPrice: 4500,
-    } satisfies TrackingRow;
-  }),
-];
-
 const PAGE_SIZE = 5;
 
+function dtoToRow(dto: TrackingRowDTO): TrackingRow {
+  return {
+    bookingId: dto.bookingId,
+    concertName: dto.concertName,
+    showTime: dto.showTime,
+    zone: dto.zone,
+    status: dto.status as TrackingStatus,
+    paymentDeadline: dto.paymentDeadline
+      ? new Date(dto.paymentDeadline)
+      : undefined,
+    totalPrice: dto.totalPrice,
+  };
+}
+
 export default function TrackingPage() {
-  const bookings = mockTracking;
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+    refetch,
+    isFetching,
+    dataUpdatedAt,
+  } = useBookingsQuery();
+
+  const bookings = useMemo(() => (data ?? []).map(dtoToRow), [data]);
+  const isUnauthed =
+    isError && error instanceof BookingsError && error.status === 401;
+  const isLoadError = isError && !isUnauthed;
+  const isReady = !isPending && !isError;
+
   const [currentPage, setCurrentPage] = useState(1);
-  const [lastUpdated, setLastUpdated] = useState(() => new Date());
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
+
+  const lastUpdated = useMemo(
+    () => (dataUpdatedAt ? new Date(dataUpdatedAt) : new Date()),
+    [dataUpdatedAt],
+  );
 
   const filteredRows = useMemo(() => {
     if (!searchQuery.trim()) return bookings;
@@ -153,30 +118,9 @@ export default function TrackingPage() {
   );
 
   const handleRefresh = () => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-    }
-    setIsRefreshing(true);
-    setLastUpdated(new Date());
     setCurrentPage(1);
-    refreshTimeoutRef.current = setTimeout(() => {
-      setIsRefreshing(false);
-      refreshTimeoutRef.current = null;
-    }, 800);
+    refetch();
   };
-
-  useEffect(() => {
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, []);
 
   const checkScrollButtons = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -233,7 +177,7 @@ export default function TrackingPage() {
 
   return (
     <main className="min-h-screen px-3 py-4 sm:px-4">
-      {isLoading && <Loading />}
+      {isPending && <Loading />}
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="text-center space-y-2 px-2">
           <p className="text-xs sm:text-sm uppercase tracking-[0.3em] text-muted-foreground">
@@ -247,6 +191,40 @@ export default function TrackingPage() {
           </p>
         </div>
 
+        {isUnauthed && (
+          <div className="rounded-3xl border border-border/60 bg-background/80 shadow-sm p-8 text-center space-y-4">
+            <h2 className="text-lg font-semibold">
+              กรุณาเข้าสู่ระบบด้วย LINE
+            </h2>
+            <p className="text-muted-foreground text-sm max-w-md mx-auto">
+              เข้าสู่ระบบเพื่อดูสถานะการจองของคุณ
+            </p>
+            <Button
+              size="lg"
+              onClick={() => {
+                window.location.href = `/api/auth/line/login?returnTo=${encodeURIComponent(
+                  "/tracking",
+                )}`;
+              }}
+            >
+              เข้าสู่ระบบด้วย LINE
+            </Button>
+          </div>
+        )}
+
+        {isLoadError && (
+          <div className="rounded-3xl border border-rose-200 bg-rose-50/60 shadow-sm p-8 text-center space-y-4">
+            <h2 className="text-lg font-semibold text-rose-700">
+              {error?.message ?? "ไม่สามารถโหลดข้อมูลการจองได้"}
+            </h2>
+            <Button variant="outline" size="lg" onClick={() => refetch()}>
+              ลองอีกครั้ง
+            </Button>
+          </div>
+        )}
+
+        {isReady && (
+          <>
         {urgentPayments.length > 0 && (
           <div className="relative">
             {showLeftArrow && (
@@ -381,7 +359,7 @@ export default function TrackingPage() {
                     onClick={handleRefresh}
                   >
                     <RefreshCcw
-                      className={`mr-1.5 h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+                      className={`mr-1.5 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
                     />
                     รีเฟรช
                   </Button>
@@ -628,6 +606,8 @@ export default function TrackingPage() {
             </>
           )}
         </div>
+          </>
+        )}
       </div>
     </main>
   );

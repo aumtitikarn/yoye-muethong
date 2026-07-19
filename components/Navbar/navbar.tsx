@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Home, Calendar, Search, MessageSquare } from "lucide-react";
+import AuthButton from "@/components/Navbar/AuthButton";
 
 const navItems = [
   { label: "หน้าแรก", href: "/", path: "/", icon: Home },
@@ -55,16 +55,7 @@ export default function Navbar() {
               );
             })}
           </div>
-          <Button className="h-10 px-4 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white font-semibold shadow-lg gap-2">
-            <Image
-              src="/LINE_APP_Android.png"
-              alt="LINE"
-              width={24}
-              height={24}
-              className="rounded-full"
-            />
-            เข้าสู่ระบบ
-          </Button>
+          <AuthButton />
         </div>
       </nav>
 
@@ -88,16 +79,7 @@ export default function Navbar() {
               <p className="text-xs text-foreground">@yji_ticket</p>
             </div>
           </div>
-          <Button className="h-9 px-3 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white font-semibold shadow-lg gap-2">
-            <Image
-              src="/LINE_APP_Android.png"
-              alt="LINE"
-              width={20}
-              height={20}
-              className="rounded-full"
-            />
-            <span className="text-xs">เข้าสู่ระบบ</span>
-          </Button>
+          <AuthButton compact />
         </div>
       </div>
 

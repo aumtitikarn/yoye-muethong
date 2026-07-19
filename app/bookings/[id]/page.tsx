@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useBookingDetailQuery } from "@/lib/queries";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -44,48 +45,12 @@ type BookingDetail = {
   quantity: number;
   total: number;
   serviceFee: number;
+  price: number;
   note?: string;
   zones: ZoneOption[];
 };
 
-type ExtraField = {
-  id: number;
-  otherCode: string;
-  label: string;
-  isRequired: boolean;
-};
-
 type PaymentMethod = "store_pay" | "self_pay";
-
-// ── Mock Data ──────────────────────────────────────────
-
-const mockBooking: BookingDetail = {
-  bookingCode: "YJI-BP-2026-001",
-  eventName: "BLACKPINK WORLD TOUR [BORN PINK] IN BANGKOK",
-  poster: "/con.jpeg",
-  showTime: "25 เมษายน 2569 (19:00 น.)",
-  zone: "VIP Standing",
-  quantity: 2,
-  eventTypes: EEventTypes.form,
-  total: 17000,
-  serviceFee: 500,
-  note: "หมายเหตุตอนที่กรอกรายละเอียดการจอง",
-  zones: [
-    { id: 1, name: "VIP Standing", price: 8500, available: true },
-    { id: 2, name: "Standing", price: 5500, available: true },
-    { id: 3, name: "Seat A", price: 6500, available: true },
-    { id: 4, name: "Seat B", price: 4500, available: false },
-  ],
-};
-
-const mockExtraFields: ExtraField[] = [
-  { id: 1, otherCode: "other1", label: "ราคาบัตรสำรอง", isRequired: true },
-  { id: 2, otherCode: "other2", label: "โซนสำรอง", isRequired: true },
-  { id: 3, otherCode: "other3", label: "จำนวน", isRequired: false },
-  { id: 4, otherCode: "other4", label: "อีเมล", isRequired: false },
-  { id: 5, otherCode: "other5", label: "รหัสผ่าน", isRequired: false },
-  { id: 6, otherCode: "other6", label: "เมมเบอร์ชิป", isRequired: false },
-];
 
 // ── Component ──────────────────────────────────────────
 
@@ -93,24 +58,47 @@ export default function BookingDetailPage() {
   const params = useParams();
   const bookingId = params.id as string;
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [booking] = useState<BookingDetail>(mockBooking);
-  const [selectedZoneId, setSelectedZoneId] = useState<number | null>(
-    () =>
-      mockBooking.zones.find((z) => z.name === mockBooking.zone)?.id ?? null,
-  );
+  const { data: detail, isPending, isError, error } =
+    useBookingDetailQuery(bookingId);
+
+  const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("store_pay");
-  const [adjustedQuantity, setAdjustedQuantity] = useState(() =>
-    Math.max(1, booking.quantity),
-  );
+  const [adjustedQuantity, setAdjustedQuantity] = useState(1);
   const [extraValues, setExtraValues] = useState<Record<number, string>>({});
   const [isEditingZone, setIsEditingZone] = useState(false);
 
+  // Sync editable state once the real booking loads.
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, []);
+    if (!detail) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedZoneId(
+      detail.zones.find((z) => z.name === detail.zone)?.id ?? null,
+    );
+    setAdjustedQuantity(Math.max(1, detail.quantity));
+  }, [detail]);
+
+  if (isPending) return <Loading />;
+
+  if (isError || !detail) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4 text-center">
+        <p className="text-lg font-semibold text-foreground">
+          {error?.message ?? "ไม่พบข้อมูลการจอง"}
+        </p>
+        <Button asChild variant="outline">
+          <Link href="/tracking">กลับหน้าติดตามสถานะ</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const booking: BookingDetail = {
+    ...detail,
+    eventTypes:
+      detail.eventTypes === "form" ? EEventTypes.form : EEventTypes.ticket,
+  };
+  const extraFields = detail.fields;
 
   const selectedZone = booking.zones.find((z) => z.id === selectedZoneId);
   const ticketsToCharge = Math.min(adjustedQuantity, booking.quantity);
@@ -124,12 +112,18 @@ export default function BookingDetailPage() {
     ? (selectedZone.price + (booking.serviceFee || 0)) * ticketsToCharge
     : unitTotal * ticketsToCharge;
 
-  const extraFieldsValid = mockExtraFields.every(
+  // Prefer the event-level price when set: total = price × จำนวนรายชื่อ/ใบ.
+  const displayTotal = booking.price
+    ? booking.price * ticketsToCharge
+    : updatedTotal;
+
+  const isFormType = booking.eventTypes === EEventTypes.form;
+  const totalLabel = isFormType ? "ค่าฟอร์ม" : "ยอดค่าบัตรรวม";
+
+  const extraFieldsValid = extraFields.every(
     (f) => !f.isRequired || (extraValues[f.id] ?? "").trim().length > 0,
   );
   const canSubmit = selectedZoneId !== null && extraFieldsValid;
-
-  if (isLoading) return <Loading />;
 
   return (
     <div className="min-h-screen py-4 px-3 sm:px-4">
@@ -501,32 +495,38 @@ export default function BookingDetailPage() {
                 <User className="size-5 text-primary" />
                 <h3 className="text-base font-bold">ข้อมูลเพิ่มเติม</h3>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {mockExtraFields.map((field) => (
-                  <div key={field.id} className="space-y-1.5">
-                    <Label
-                      htmlFor={`extra-${field.id}`}
-                      className="text-sm font-medium"
-                    >
-                      {field.label}
-                      {field.isRequired && (
-                        <span className="text-destructive ml-1">*</span>
-                      )}
-                    </Label>
-                    <Input
-                      id={`extra-${field.id}`}
-                      placeholder={field.label}
-                      value={extraValues[field.id] ?? ""}
-                      onChange={(e) =>
-                        setExtraValues((prev) => ({
-                          ...prev,
-                          [field.id]: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
+              {extraFields.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  งานนี้ไม่มีข้อมูลเพิ่มเติมที่ต้องกรอก
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {extraFields.map((field) => (
+                    <div key={field.id} className="space-y-1.5">
+                      <Label
+                        htmlFor={`extra-${field.id}`}
+                        className="text-sm font-medium"
+                      >
+                        {field.label}
+                        {field.isRequired && (
+                          <span className="text-destructive ml-1">*</span>
+                        )}
+                      </Label>
+                      <Input
+                        id={`extra-${field.id}`}
+                        placeholder={field.label}
+                        value={extraValues[field.id] ?? ""}
+                        onChange={(e) =>
+                          setExtraValues((prev) => ({
+                            ...prev,
+                            [field.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
 
             {/* Price Summary & Submit */}
@@ -538,10 +538,10 @@ export default function BookingDetailPage() {
                     <div className="flex items-center justify-between">
                       <div className="space-y-1">
                         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                          ยอดค่าบัตรรวม
+                          {totalLabel}
                         </div>
                         <div className="text-3xl font-black text-primary">
-                          ฿{updatedTotal.toLocaleString()}
+                          ฿{displayTotal.toLocaleString()}
                         </div>
                       </div>
                       <div className="text-right space-y-1">
@@ -549,9 +549,18 @@ export default function BookingDetailPage() {
                           {selectedZone?.name ?? booking.zone}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {ticketsToCharge} ใบ × (฿
-                          {(selectedZone?.price ?? 0).toLocaleString()} +{" "}
-                          {booking.serviceFee.toLocaleString()})
+                          {booking.price ? (
+                            <>
+                              {ticketsToCharge} × ฿
+                              {booking.price.toLocaleString()}
+                            </>
+                          ) : (
+                            <>
+                              {ticketsToCharge} ใบ × (฿
+                              {(selectedZone?.price ?? 0).toLocaleString()} +{" "}
+                              {booking.serviceFee.toLocaleString()})
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>

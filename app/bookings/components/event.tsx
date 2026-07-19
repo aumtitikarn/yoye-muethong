@@ -3,8 +3,15 @@
 import { useState } from "react";
 import Image from "next/image";
 import { motion } from "motion/react";
-import { Search, Calendar, Receipt, StickyNote, Tag } from "lucide-react";
-import { BackStep } from "./backStep";
+import {
+  Search,
+  Calendar,
+  Receipt,
+  StickyNote,
+  Tag,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/card";
 import {
@@ -16,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import StepBooking from "./stepBooking";
 import { Input } from "@/components/ui/input";
-import { mockEvents } from "@/mockData/event.data";
+import { useEventsQuery } from "@/lib/queries";
 import { EZoneStatus, EEventTypes } from "../types/enum";
 import type { BookingEvent } from "@/mockData/event.data";
 
@@ -31,7 +38,9 @@ export default function Event({ onBack, onSelect }: EventProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<BookingEvent | null>(null);
 
-  const filteredEvents = mockEvents.filter((event) =>
+  const { data: events = [], isPending, isError, error } = useEventsQuery();
+
+  const filteredEvents = events.filter((event) =>
     event.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
@@ -58,7 +67,29 @@ export default function Event({ onBack, onSelect }: EventProps) {
           </div>
         </motion.div>
 
+        {/* Loading state */}
+        {isPending && (
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+            <Loader2 className="size-8 animate-spin text-primary" />
+            <p className="text-sm">กำลังโหลดรายการงาน...</p>
+          </div>
+        )}
+
+        {/* Error state */}
+        {isError && (
+          <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+            <AlertCircle className="size-10 text-destructive" />
+            <p className="text-lg font-semibold text-foreground">
+              {error?.message ?? "โหลดรายการงานไม่สำเร็จ"}
+            </p>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              ลองอีกครั้ง
+            </Button>
+          </div>
+        )}
+
         {/* Event Grid - poster & name only */}
+        {!isPending && !isError && (
         <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredEvents.map((event, index) => {
             const isQueueAvailable = event.statusEvent?.includes(
@@ -92,7 +123,7 @@ export default function Event({ onBack, onSelect }: EventProps) {
                   {/* Poster */}
                   <div className="relative">
                     <Image
-                      src="/con.jpeg"
+                      src={event.poster || "/con.jpeg"}
                       alt={event.name}
                       width={600}
                       height={400}
@@ -144,8 +175,9 @@ export default function Event({ onBack, onSelect }: EventProps) {
             );
           })}
         </div>
+        )}
 
-        {filteredEvents.length === 0 && (
+        {!isPending && !isError && filteredEvents.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -153,7 +185,9 @@ export default function Event({ onBack, onSelect }: EventProps) {
           >
             <div className="text-6xl mb-4">🔍</div>
             <p className="text-xl text-muted-foreground">
-              ไม่พบงานที่ตรงกับการค้นหา
+              {events.length === 0
+                ? "ยังไม่มีงานเปิดให้จองในขณะนี้"
+                : "ไม่พบงานที่ตรงกับการค้นหา"}
             </p>
           </motion.div>
         )}

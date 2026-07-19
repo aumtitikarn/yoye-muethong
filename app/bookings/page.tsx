@@ -1,141 +1,44 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Condition from "./components/condition";
-import Event, { type BookingEvent } from "./components/event";
+import Event from "./components/event";
 import Loading from "@/components/Loading";
 import { steps } from "./components/stepBooking";
 import BookingInfo from "./components/bookings";
 import Payment from "./components/payment";
 import { Button } from "@/components/ui/button";
 import { Clock } from "lucide-react";
+import { useBookingStore } from "./store";
 
-const STORAGE_KEY = "yoye_booking_state";
-const PAYMENT_TIMEOUT_MS = 10 * 60 * 1000;
-
-type BookingFormData = {
-  nickName: string;
-  showTimeId: string;
-  zoneId: string;
-  ticketCount: number;
-  notes: string;
-  nameList?: string[];
-};
-
-type PersistedState = {
-  step: number;
-  selectedEvent: BookingEvent | null;
-  paymentStartedAt: number | null;
-  bookingForm: BookingFormData | null;
-};
-
-function saveState(state: PersistedState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // localStorage unavailable
-  }
-}
-
-export type { BookingFormData };
-
-function loadState(): PersistedState | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as PersistedState;
-  } catch {
-    return null;
-  }
-}
-
-function clearState() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // localStorage unavailable
-  }
-}
-
-function getInitialState() {
-  const saved = loadState();
-  if (!saved) {
-    return {
-      step: steps[0].id,
-      selectedEvent: null as BookingEvent | null,
-      paymentStartedAt: null as number | null,
-      bookingForm: null as BookingFormData | null,
-      isExpired: false,
-    };
-  }
-  if (
-    saved.step === steps[3].id &&
-    saved.paymentStartedAt &&
-    Date.now() - saved.paymentStartedAt >= PAYMENT_TIMEOUT_MS
-  ) {
-    return {
-      step: steps[3].id,
-      selectedEvent: saved.selectedEvent,
-      paymentStartedAt: saved.paymentStartedAt,
-      bookingForm: saved.bookingForm,
-      isExpired: true,
-    };
-  }
-  return {
-    step: saved.step,
-    selectedEvent: saved.selectedEvent,
-    paymentStartedAt: saved.paymentStartedAt,
-    bookingForm: saved.bookingForm,
-    isExpired: false,
-  };
-}
+export type { BookingFormData } from "./store";
 
 export default function Bookings() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [initial] = useState(getInitialState);
-  const [step, setStep] = useState(initial.step);
-  const [selectedEvent, setSelectedEvent] = useState(initial.selectedEvent);
-  const [paymentStartedAt, setPaymentStartedAt] = useState(
-    initial.paymentStartedAt,
-  );
-  const [bookingForm, setBookingForm] = useState<BookingFormData | null>(
-    initial.bookingForm,
-  );
-  const [isExpired, setIsExpired] = useState(initial.isExpired);
+  // Gate rendering until the client has mounted so the persisted (localStorage)
+  // store state doesn't clash with the server-rendered HTML.
+  const [mounted, setMounted] = useState(false);
+
+  const step = useBookingStore((s) => s.step);
+  const selectedEvent = useBookingStore((s) => s.selectedEvent);
+  const paymentStartedAt = useBookingStore((s) => s.paymentStartedAt);
+  const bookingForm = useBookingStore((s) => s.bookingForm);
+  const isExpired = useBookingStore((s) => s.isExpired);
+
+  const selectEvent = useBookingStore((s) => s.selectEvent);
+  const goToStep = useBookingStore((s) => s.goToStep);
+  const setBookingForm = useBookingStore((s) => s.setBookingForm);
+  const setExpired = useBookingStore((s) => s.setExpired);
+  const checkExpiry = useBookingStore((s) => s.checkExpiry);
+  const reset = useBookingStore((s) => s.reset);
 
   useEffect(() => {
-    const id = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(id);
-  }, []);
+    checkExpiry();
+    // Client-mounted gate to avoid a persisted-store vs SSR hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, [checkExpiry]);
 
-  // Persist state whenever it changes
-  useEffect(() => {
-    if (isLoading) return;
-    saveState({ step, selectedEvent, paymentStartedAt, bookingForm });
-  }, [step, selectedEvent, paymentStartedAt, bookingForm, isLoading]);
-
-  const goToStep = useCallback((nextStep: number) => {
-    setStep(nextStep);
-    // Record timestamp when entering payment step
-    if (nextStep === steps[3].id) {
-      setPaymentStartedAt(Date.now());
-    }
-  }, []);
-
-  const handleReset = useCallback(() => {
-    clearState();
-    setStep(steps[0].id);
-    setSelectedEvent(null);
-    setPaymentStartedAt(null);
-    setBookingForm(null);
-    setIsExpired(false);
-  }, []);
-
-  const handleExpired = useCallback(() => {
-    setIsExpired(true);
-  }, []);
-
-  if (isLoading) {
+  if (!mounted) {
     return <Loading />;
   }
 
@@ -154,7 +57,7 @@ export default function Bookings() {
               เวลาในการชำระเงินมัดจำหมดลงแล้ว โปรดทำรายการใหม่อีกครั้ง
             </p>
           </div>
-          <Button size="lg" className="min-w-[200px]" onClick={handleReset}>
+          <Button size="lg" className="min-w-[200px]" onClick={reset}>
             จองคิวใหม่
           </Button>
         </div>
@@ -167,10 +70,7 @@ export default function Bookings() {
       {step === steps[0].id && (
         <Event
           onBack={() => goToStep(steps[0].id)}
-          onSelect={(event) => {
-            setSelectedEvent(event);
-            goToStep(steps[1].id);
-          }}
+          onSelect={(event) => selectEvent(event)}
         />
       )}
       {step === steps[1].id && selectedEvent && (
@@ -207,11 +107,9 @@ export default function Bookings() {
       {step === steps[3].id && (
         <Payment
           onBack={() => goToStep(steps[2].id)}
-          onSubmit={() => {
-            handleReset();
-          }}
+          onSubmit={reset}
           paymentStartedAt={paymentStartedAt}
-          onExpired={handleExpired}
+          onExpired={setExpired}
         />
       )}
     </>

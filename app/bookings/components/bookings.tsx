@@ -12,7 +12,7 @@ import { SingleCombobox } from "@/components/ui/combobox";
 import type { BookingEvent } from "./event";
 import { RefreshCcw, ArrowDown } from "lucide-react";
 import { EZoneStatus, EEventTypes } from "../types/enum";
-import type { BookingFormData } from "../page";
+import type { BookingFormData } from "../store";
 
 interface BookingInfoProps {
   readonly event: BookingEvent;
@@ -24,12 +24,18 @@ interface BookingInfoProps {
 
 const initialForm = {
   nickName: "",
+  phone: "",
   showTimeId: "",
   zoneId: "",
   ticketCount: 1,
   notes: "",
   nameList: [""],
 };
+
+// Thai phone: 9–10 digits starting with 0 (mobile 10 / landline 9).
+function isValidPhone(phone: string): boolean {
+  return /^0\d{8,9}$/.test(phone.replace(/\D/g, ""));
+}
 
 export default function BookingInfo({
   event,
@@ -48,6 +54,7 @@ export default function BookingInfo({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const firstNameFieldId = useId();
+  const phoneFieldId = useId();
   const notesFieldId = useId();
 
   useEffect(() => {
@@ -107,10 +114,13 @@ export default function BookingInfo({
       ? form.ticketCount * 100
       : form.ticketCount * (selectedZone?.servicePrice ?? 0);
 
+  const phoneValid = isValidPhone(form.phone);
+
   const canProceed =
     concertData.eventTypes === EEventTypes.form
-      ? Boolean(form.nickName)
+      ? Boolean(form.nickName) && phoneValid
       : Boolean(form.nickName) &&
+        phoneValid &&
         Boolean(form.showTimeId) &&
         Boolean(form.zoneId);
 
@@ -140,6 +150,33 @@ export default function BookingInfo({
                   placeholder="กรอกชื่อเล่น"
                   className="h-10 focus:border-primary transition-all duration-300 bg-background/50"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor={phoneFieldId}
+                  className="text-sm font-semibold text-foreground flex items-center gap-1.5"
+                >
+                  เบอร์โทรศัพท์
+                  <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id={phoneFieldId}
+                  type="tel"
+                  inputMode="numeric"
+                  value={form.phone}
+                  onChange={(e) =>
+                    updateField("phone", e.target.value.replace(/[^\d]/g, ""))
+                  }
+                  placeholder="เช่น 0812345678"
+                  maxLength={10}
+                  className="h-10 focus:border-primary transition-all duration-300 bg-background/50"
+                />
+                {form.phone.length > 0 && !phoneValid && (
+                  <p className="text-xs text-destructive">
+                    กรุณากรอกเบอร์โทรให้ถูกต้อง (เช่น 0812345678)
+                  </p>
+                )}
               </div>
 
               {concertData.eventTypes !== EEventTypes.form && (

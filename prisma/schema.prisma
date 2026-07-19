@@ -1,0 +1,195 @@
+// Minimal Prisma schema for the storefront (yoye-muethong).
+// It targets the SAME database as yoye-admin (yoye-booking-database) but only
+// declares the tables/columns the storefront needs. Extra columns that exist in
+// the DB but aren't declared here are simply ignored by reads/updates.
+// Source of truth for the full schema lives in yoye-admin/prisma/schema.prisma.
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Mirrors yoye-admin's enums. Kept in sync manually — the admin schema is the
+// source of truth.
+enum EventType {
+  TICKET
+  FORM
+}
+
+enum QueueAcceptanceStatus {
+  NOT_OPEN
+  REWARD_ONLY
+  OPEN
+  CLOSED
+}
+
+// Booking lifecycle, owned by yoye-admin. The storefront reads it (tracking) but
+// never writes it. Kept in sync manually with the admin schema.
+enum BookingStatus {
+  WAITING_QUEUE_APPROVAL
+  WAITING_DEPOSIT_TRANSFER
+  WAITING_DEPOSIT_VERIFY
+  QUEUE_BOOKED
+  WAITING_BOOKING_INFO
+  TRANSFERRING_TICKET
+  CONFIRMING_TICKET
+  WAITING_ADMIN_CONFIRM
+  READY_TO_BOOK
+  BOOKING_IN_PROGRESS
+  PARTIALLY_BOOKED
+  FULLY_BOOKED
+  BOOKING_FAILED
+  CUSTOMER_SELF_BOOKED
+  TEAM_NOT_RECEIVED
+  TEAM_BOOKED
+  PARTIAL_SELF_TEAM_BOOKING
+  FORM_WAITING_RESULT
+  FORM_MISSED
+  FORM_HAS_NAME
+  FORM_NO_NAME
+  WAITING_SUMMARY
+  WAITING_SERVICE_FEE
+  WAITING_SERVICE_FEE_VERIFY
+  SERVICE_FEE_PAID
+  DEPOSIT_PENDING
+  DEPOSIT_USED
+  DEPOSIT_FORFEITED
+  WAITING_REFUND
+  REFUNDED
+  COMPLETED
+  CANCELLED
+  CLOSED_REFUNDED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  REFUNDED
+}
+
+model Customer {
+  id         Int     @id @default(autoincrement())
+  fullName   String
+  email      String?
+  phone      String?
+  // LINE Messaging API push target (Uxxxx), captured from LINE Login on the storefront.
+  lineUserId String? @unique
+  // Required by the DB (NOT NULL). Prisma must manage these or inserts hit P2011.
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  bookings Booking[]
+
+  @@map("customers")
+}
+
+model Booking {
+  id            Int           @id @default(autoincrement())
+  bookingCode   String        @unique
+  eventId       Int
+  customerId    Int
+  nameCustomer  String?
+  status        BookingStatus @default(WAITING_QUEUE_APPROVAL)
+  paymentStatus PaymentStatus @default(UNPAID)
+  netCardPrice  Float         @default(0)
+  serviceFee    Float         @default(0)
+  shippingFee   Float         @default(0)
+  vatAmount     Float         @default(0)
+  depositPaid   Float         @default(0)
+  totalPaid     Float         @default(0)
+  refundAmount  Float         @default(0)
+  isActive      Boolean       @default(true)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  // NOT NULL in the DB with no default — Prisma must set it on create/update.
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  event        Event         @relation(fields: [eventId], references: [id])
+  bookingItems BookingItem[]
+
+  @@map("bookings")
+}
+
+// Per-round/zone line items on a booking (TICKET events). Read-only here.
+model BookingItem {
+  id        Int    @id @default(autoincrement())
+  bookingId Int
+  roundId   Int?
+  zoneId    Int?
+  quantity  Int    @default(1)
+
+  booking Booking    @relation(fields: [bookingId], references: [id])
+  round   ShowRound? @relation(fields: [roundId], references: [id])
+  zone    Zone?      @relation(fields: [zoneId], references: [id])
+
+  @@map("booking_items")
+}
+
+// Events are owned by yoye-admin; the storefront only reads them (step 1 of the
+// booking flow). Only the columns the storefront renders are declared here — the
+// admin table (default map "Event") holds many more, which Prisma ignores.
+model Event {
+  id                    Int                   @id @default(autoincrement())
+  name                  String
+  notes                 String?
+  posterUrl             String?
+  posterImage           String?
+  type                  EventType
+  eventDate             DateTime?
+  price                 Decimal?
+  feePerEntry           Decimal?
+  capacity              Int?
+  isActive              Boolean               @default(true)
+  status                Boolean               @default(true)
+  queueAcceptanceStatus QueueAcceptanceStatus @default(NOT_OPEN)
+  createdAt             DateTime              @default(now())
+  deletedAt             DateTime?
+
+  showRounds     ShowRound[]
+  bookings       Booking[]
+  deepInfoFields DeepInfoField[]
+}
+
+// Admin-defined extra fields a customer fills in per event (read-only here).
+model DeepInfoField {
+  id         Int     @id @default(autoincrement())
+  otherCode  String
+  label      String
+  isRequired Boolean @default(false)
+
+  eventId Int
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model ShowRound {
+  id   Int      @id @default(autoincrement())
+  name String
+  date DateTime
+  time String
+
+  eventId Int
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  zones        Zone[]
+  bookingItems BookingItem[]
+}
+
+model Zone {
+  id       Int     @id @default(autoincrement())
+  name     String
+  price    Decimal
+  fee      Decimal
+  capacity Int
+
+  roundId Int
+  round   ShowRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  bookingItems BookingItem[]
+}
