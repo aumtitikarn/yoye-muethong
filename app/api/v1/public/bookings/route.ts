@@ -16,6 +16,8 @@ export interface TrackingRowDTO {
   status: string; // a TrackingStatus enum value
   paymentDeadline: string | null;
   totalPrice: number;
+  /** True when the customer has already saved extra-field answers for this booking. */
+  haveDeepInfo: boolean;
 }
 
 const bookingSelect = {
@@ -34,6 +36,7 @@ const bookingSelect = {
       zone: { select: { name: true } },
     },
   },
+  _count: { select: { deepInfoResponses: true } },
 } satisfies Prisma.BookingSelect;
 
 type BookingRow = Prisma.BookingGetPayload<{ select: typeof bookingSelect }>;
@@ -77,6 +80,7 @@ function toDTO(b: BookingRow): TrackingRowDTO {
     paymentDeadline: null,
     totalPrice:
       b.netCardPrice + b.serviceFee + b.shippingFee + b.vatAmount,
+    haveDeepInfo: b._count.deepInfoResponses > 0,
   };
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Loading from "@/components/Loading";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { STATUS_METADATA, TrackingStatus } from "./types/enum";
 import type { TrackingRowDTO } from "@/lib/api";
 import { useBookingsQuery, BookingsError } from "@/lib/queries";
@@ -27,6 +33,8 @@ import {
   ChevronRight,
   ClipboardPen,
   CreditCard,
+  EllipsisVertical,
+  FileText,
   RefreshCcw,
 } from "lucide-react";
 
@@ -38,6 +46,7 @@ type TrackingRow = {
   status: TrackingStatus;
   paymentDeadline?: Date;
   totalPrice: number;
+  haveDeepInfo: boolean;
 };
 
 const PAGE_SIZE = 5;
@@ -53,10 +62,42 @@ function dtoToRow(dto: TrackingRowDTO): TrackingRow {
       ? new Date(dto.paymentDeadline)
       : undefined,
     totalPrice: dto.totalPrice,
+    haveDeepInfo: dto.haveDeepInfo,
   };
 }
 
+/** Three-dots menu with a link to the full booking detail page. */
+function BookingRowMenu({ bookingId }: { bookingId: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-8 rounded-full text-muted-foreground hover:text-foreground"
+          aria-label="ตัวเลือกเพิ่มเติม"
+        >
+          <EllipsisVertical className="size-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-52 bg-background p-1 shadow-lg"
+      >
+        <Link
+          href={`/bookings/${bookingId}`}
+          className="flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors hover:bg-muted"
+        >
+          <FileText className="size-4" />
+          รายละเอียดการจอง
+        </Link>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function TrackingPage() {
+  const router = useRouter();
   const {
     data,
     isPending,
@@ -406,19 +447,20 @@ export default function TrackingPage() {
                             </p>
                           )}
                       </div>
-                      {row.status === TrackingStatus.BOOKING_CONFIRMED && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="mt-3 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
-                          asChild
-                        >
-                          <Link href={`/bookings/${row.bookingId}`}>
-                            <ClipboardPen className="size-3.5" />
-                            กรอกข้อมูลการจองเพิ่มเติม
-                          </Link>
-                        </Button>
-                      )}
+                      {row.status === TrackingStatus.BOOKING_CONFIRMED &&
+                        !row.haveDeepInfo && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="mt-3 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
+                            asChild
+                          >
+                            <Link href={`/bookings/${row.bookingId}`}>
+                              <ClipboardPen className="size-3.5" />
+                              กรอกข้อมูลการจองเพิ่มเติม
+                            </Link>
+                          </Button>
+                        )}
                       {needsPayment && (
                         <Button
                           size="sm"
@@ -446,6 +488,7 @@ export default function TrackingPage() {
                       <TableHead>รอบการแสดง</TableHead>
                       <TableHead>โซน</TableHead>
                       <TableHead className="text-right">สถานะ</TableHead>
+                      <TableHead className="w-12" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -454,7 +497,13 @@ export default function TrackingPage() {
                         row.status === TrackingStatus.WAIT_FULL_PAYMENT ||
                         row.status === TrackingStatus.WAIT_SERVICE_FEE;
                       return (
-                        <TableRow key={row.bookingId}>
+                        <TableRow
+                          key={row.bookingId}
+                          className="cursor-pointer transition-colors hover:bg-muted/50"
+                          onClick={() =>
+                            router.push(`/bookings/${row.bookingId}`)
+                          }
+                        >
                           <TableCell className="font-semibold text-base">
                             {row.bookingId}
                           </TableCell>
@@ -476,21 +525,25 @@ export default function TrackingPage() {
                           <TableCell>{row.showTime}</TableCell>
                           <TableCell>{row.zone}</TableCell>
                           <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
+                            <div
+                              className="flex items-center justify-end gap-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               {row.status ===
-                                TrackingStatus.BOOKING_CONFIRMED && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="gap-1.5 text-xs btn-glow-border rounded-xl font-semibold text-foreground"
-                                  asChild
-                                >
-                                  <Link href={`/bookings/${row.bookingId}`}>
-                                    <ClipboardPen className="size-3.5" />
-                                    กรอกข้อมูลเพิ่มเติม
-                                  </Link>
-                                </Button>
-                              )}
+                                TrackingStatus.BOOKING_CONFIRMED &&
+                                !row.haveDeepInfo && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="gap-1.5 text-xs btn-glow-border rounded-xl font-semibold text-foreground"
+                                    asChild
+                                  >
+                                    <Link href={`/bookings/${row.bookingId}`}>
+                                      <ClipboardPen className="size-3.5" />
+                                      กรอกข้อมูลเพิ่มเติม
+                                    </Link>
+                                  </Button>
+                                )}
                               {needsPayment && (
                                 <Button
                                   size="sm"
@@ -521,6 +574,12 @@ export default function TrackingPage() {
                               </Tooltip>
                             </div>
                           </TableCell>
+                          <TableCell
+                            className="text-right"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <BookingRowMenu bookingId={row.bookingId} />
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -528,7 +587,7 @@ export default function TrackingPage() {
                   <TableFooter>
                     <TableRow>
                       <TableCell
-                        colSpan={5}
+                        colSpan={6}
                         className="text-sm text-muted-foreground"
                       >
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

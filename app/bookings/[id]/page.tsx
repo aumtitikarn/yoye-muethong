@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { useBookingDetailQuery } from "@/lib/queries";
+import { useParams, useRouter } from "next/navigation";
+import { useBookingDetailQuery, useSaveDeepInfoMutation } from "@/lib/queries";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,9 @@ import Loading from "@/components/Loading";
 import {
   ArrowLeft,
   CalendarDays,
+  Check,
   CreditCard,
+  Loader2,
   MapPin,
   Minus,
   Plus,
@@ -45,7 +47,7 @@ type BookingDetail = {
   quantity: number;
   total: number;
   serviceFee: number;
-  price: number;
+  feePerEntry: number;
   note?: string;
   zones: ZoneOption[];
 };
@@ -56,10 +58,13 @@ type PaymentMethod = "store_pay" | "self_pay";
 
 export default function BookingDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const bookingId = params.id as string;
 
   const { data: detail, isPending, isError, error } =
     useBookingDetailQuery(bookingId);
+
+  const saveDeepInfo = useSaveDeepInfoMutation(bookingId);
 
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] =
@@ -76,6 +81,14 @@ export default function BookingDetailPage() {
       detail.zones.find((z) => z.name === detail.zone)?.id ?? null,
     );
     setAdjustedQuantity(Math.max(1, detail.quantity));
+    // Seed the extra fields with any answers the customer saved earlier.
+    setExtraValues(
+      Object.fromEntries(
+        detail.fields
+          .filter((f) => f.value)
+          .map((f) => [f.id, f.value]),
+      ),
+    );
   }, [detail]);
 
   if (isPending) return <Loading />;
@@ -112,9 +125,9 @@ export default function BookingDetailPage() {
     ? (selectedZone.price + (booking.serviceFee || 0)) * ticketsToCharge
     : unitTotal * ticketsToCharge;
 
-  // Prefer the event-level price when set: total = price × จำนวนรายชื่อ/ใบ.
-  const displayTotal = booking.price
-    ? booking.price * ticketsToCharge
+  // Form total uses the event fee per entry × จำนวนรายชื่อ; tickets use the zone total.
+  const displayTotal = booking.feePerEntry
+    ? booking.feePerEntry * ticketsToCharge
     : updatedTotal;
 
   const isFormType = booking.eventTypes === EEventTypes.form;
@@ -124,6 +137,20 @@ export default function BookingDetailPage() {
     (f) => !f.isRequired || (extraValues[f.id] ?? "").trim().length > 0,
   );
   const canSubmit = selectedZoneId !== null && extraFieldsValid;
+
+  // The customer has already submitted their extra info if the loaded booking
+  // carries any saved answer — in that case we hide the fill-in button.
+  const hasSavedDeepInfo = extraFields.some((f) => f.value.trim().length > 0);
+
+  const handleSaveDeepInfo = () => {
+    saveDeepInfo.mutate(
+      extraFields.map((f) => ({
+        fieldId: f.id,
+        value: (extraValues[f.id] ?? "").trim(),
+      })),
+      { onSuccess: () => router.push("/tracking") },
+    );
+  };
 
   return (
     <div className="min-h-screen py-4 px-3 sm:px-4">
@@ -443,17 +470,18 @@ export default function BookingDetailPage() {
               )}
             </Card>
 
-            {/* Payment Method */}
-            <Card className="p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <CreditCard className="size-5 text-primary" />
-                <h3 className="text-base font-bold">วิธีการชำระ</h3>
-              </div>
-              <RadioGroup
-                value={paymentMethod}
-                onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
-                className="grid grid-cols-1 sm:grid-cols-2 gap-3"
-              >
+            {/* Payment Method — hidden for form-type events */}
+            {!isFormType && (
+              <Card className="p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="size-5 text-primary" />
+                  <h3 className="text-base font-bold">วิธีการชำระ</h3>
+                </div>
+                <RadioGroup
+                  value={paymentMethod}
+                  onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+                >
                 <label
                   htmlFor="store_pay"
                   className={`flex items-center gap-3 rounded-xl border-2 p-4 cursor-pointer transition-all duration-200 ${
@@ -488,6 +516,7 @@ export default function BookingDetailPage() {
                 </label>
               </RadioGroup>
             </Card>
+            )}
 
             {/* Extra Fields from Backend */}
             <Card className="p-5 space-y-4">
@@ -516,21 +545,61 @@ export default function BookingDetailPage() {
                         id={`extra-${field.id}`}
                         placeholder={field.label}
                         value={extraValues[field.id] ?? ""}
-                        onChange={(e) =>
+                        disabled={hasSavedDeepInfo}
+                        onChange={(e) => {
+                          if (saveDeepInfo.isSuccess) saveDeepInfo.reset();
                           setExtraValues((prev) => ({
                             ...prev,
                             [field.id]: e.target.value,
-                          }))
-                        }
+                          }));
+                        }}
                       />
                     </div>
                   ))}
                 </div>
               )}
+
+              {extraFields.length > 0 && hasSavedDeepInfo && (
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Check className="size-4 text-primary" />
+                  บันทึกข้อมูลแล้ว
+                </p>
+              )}
+
+              {extraFields.length > 0 && !hasSavedDeepInfo && (
+                <div className="space-y-2 pt-1">
+                  <Button
+                    className="w-full h-11"
+                    onClick={handleSaveDeepInfo}
+                    disabled={
+                      !extraFieldsValid ||
+                      saveDeepInfo.isPending ||
+                      saveDeepInfo.isSuccess
+                    }
+                  >
+                    {saveDeepInfo.isPending || saveDeepInfo.isSuccess ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        กำลังบันทึก...
+                      </>
+                    ) : (
+                      "บันทึกข้อมูล"
+                    )}
+                  </Button>
+                  {saveDeepInfo.isError && (
+                    <p className="text-sm text-destructive text-center">
+                      {saveDeepInfo.error instanceof Error
+                        ? saveDeepInfo.error.message
+                        : "บันทึกข้อมูลไม่สำเร็จ"}
+                    </p>
+                  )}
+                </div>
+              )}
             </Card>
 
-            {/* Price Summary & Submit */}
-            <Card className="p-5 space-y-4">
+            {/* Price Summary & Submit — hidden for form-type events */}
+            {!isFormType && (
+              <Card className="p-5 space-y-4">
               {paymentMethod === "store_pay" && (
                 <div className="relative overflow-hidden rounded-2xl">
                   <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 rounded-2xl" />
@@ -549,10 +618,10 @@ export default function BookingDetailPage() {
                           {selectedZone?.name ?? booking.zone}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {booking.price ? (
+                          {booking.feePerEntry ? (
                             <>
                               {ticketsToCharge} × ฿
-                              {booking.price.toLocaleString()}
+                              {booking.feePerEntry.toLocaleString()}
                             </>
                           ) : (
                             <>
@@ -576,7 +645,8 @@ export default function BookingDetailPage() {
               <Button className="w-full h-11" disabled={!canSubmit} asChild>
                 <Link href="/tracking">ยืนยันข้อมูล</Link>
               </Button>
-            </Card>
+              </Card>
+            )}
           </div>
         </div>
       </div>

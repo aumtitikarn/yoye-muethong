@@ -129,6 +129,8 @@ export interface TrackingRowDTO {
   status: string;
   paymentDeadline: string | null;
   totalPrice: number;
+  /** True when the customer has already saved extra-field answers for this booking. */
+  haveDeepInfo: boolean;
 }
 
 export type FetchBookingsResult =
@@ -176,6 +178,8 @@ export interface DeepInfoFieldDTO {
   otherCode: string;
   label: string;
   isRequired: boolean;
+  /** The customer's previously saved answer, if any. */
+  value: string;
 }
 
 export interface ZoneOptionDTO {
@@ -195,7 +199,7 @@ export interface BookingDetailDTO {
   quantity: number;
   total: number;
   serviceFee: number;
-  price: number;
+  feePerEntry: number;
   note?: string;
   zones: ZoneOptionDTO[];
   fields: DeepInfoFieldDTO[];
@@ -217,6 +221,38 @@ export async function fetchBookingDetail(
     throw new Error(json?.message ?? `โหลดข้อมูลไม่สำเร็จ (${res.status})`);
   }
   return json.data;
+}
+
+// ── Deep info responses (extra fields on the booking detail page) ──
+
+export interface DeepInfoResponseInput {
+  fieldId: number;
+  value: string;
+}
+
+/**
+ * Save the caller's answers to the event's extra fields (deep_info_responses)
+ * for a booking. Requires a LINE session + ownership (enforced server-side).
+ * Throws on failure so the caller can surface the message.
+ */
+export async function saveDeepInfoResponses(
+  bookingCode: string,
+  responses: DeepInfoResponseInput[]
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE_URL}/public/bookings/${encodeURIComponent(bookingCode)}/deep-info`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ responses }),
+    }
+  );
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(json?.message ?? `บันทึกข้อมูลไม่สำเร็จ (${res.status})`);
+  }
 }
 
 export interface LinkLineInput {

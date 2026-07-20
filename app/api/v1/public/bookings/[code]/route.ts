@@ -11,6 +11,8 @@ export interface DeepInfoFieldDTO {
   otherCode: string;
   label: string;
   isRequired: boolean;
+  /** The customer's previously saved answer, if any. */
+  value: string;
 }
 
 export interface ZoneOptionDTO {
@@ -30,8 +32,8 @@ export interface BookingDetailDTO {
   quantity: number;
   total: number;
   serviceFee: number;
-  /** Event-level price (ยอดค่าบัตรรวม). */
-  price: number;
+  /** Event fee per entry (ค่ากด/รายชื่อ) — used for form totals. */
+  feePerEntry: number;
   note?: string;
   zones: ZoneOptionDTO[];
   fields: DeepInfoFieldDTO[];
@@ -59,6 +61,7 @@ const bookingSelect = {
   notes: true,
   deletedAt: true,
   customer: { select: { lineUserId: true } },
+  deepInfoResponses: { select: { fieldId: true, value: true } },
   bookingItems: {
     select: {
       quantity: true,
@@ -71,7 +74,7 @@ const bookingSelect = {
       name: true,
       type: true,
       eventDate: true,
-      price: true,
+      feePerEntry: true,
       posterUrl: true,
       posterImage: true,
       showRounds: {
@@ -102,6 +105,9 @@ function resolvePoster(ev: BookingRow["event"]): string {
 
 function shape(b: BookingRow): BookingDetailDTO {
   const isForm = b.event.type === "FORM";
+  const responseByField = new Map(
+    b.deepInfoResponses.map((r) => [r.fieldId, r.value]),
+  );
   const round = b.bookingItems.find((i) => i.round)?.round;
   const showTime = round
     ? `${thaiDate.format(round.date)}${round.time ? ` (${round.time} น.)` : ""}`
@@ -140,10 +146,13 @@ function shape(b: BookingRow): BookingDetailDTO {
     quantity: Math.max(1, quantity),
     total: b.netCardPrice,
     serviceFee: b.serviceFee,
-    price: b.event.price ? Number(b.event.price) : 0,
+    feePerEntry: b.event.feePerEntry ? Number(b.event.feePerEntry) : 0,
     note: b.notes ?? undefined,
     zones,
-    fields: b.event.deepInfoFields,
+    fields: b.event.deepInfoFields.map((f) => ({
+      ...f,
+      value: responseByField.get(f.id) ?? "",
+    })),
   };
 }
 

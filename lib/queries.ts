@@ -1,5 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
-import { fetchEvents, fetchBookings, fetchBookingDetail } from "./api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  fetchEvents,
+  fetchBookings,
+  fetchBookingDetail,
+  saveDeepInfoResponses,
+  type DeepInfoResponseInput,
+} from "./api";
 
 /** Server state: bookable events for step 1 of the booking flow. */
 export function useEventsQuery() {
@@ -44,5 +50,19 @@ export function useBookingDetailQuery(bookingCode: string | undefined) {
     queryKey: ["booking-detail", bookingCode],
     queryFn: ({ signal }) => fetchBookingDetail(bookingCode as string, signal),
     enabled: Boolean(bookingCode),
+  });
+}
+
+/** Save the booking's extra-field answers (deep_info_responses). */
+export function useSaveDeepInfoMutation(bookingCode: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (responses: DeepInfoResponseInput[]) =>
+      saveDeepInfoResponses(bookingCode as string, responses),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["booking-detail", bookingCode],
+      });
+    },
   });
 }

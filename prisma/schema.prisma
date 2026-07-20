@@ -110,9 +110,10 @@ model Booking {
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
 
-  customer     Customer      @relation(fields: [customerId], references: [id])
-  event        Event         @relation(fields: [eventId], references: [id])
-  bookingItems BookingItem[]
+  customer          Customer           @relation(fields: [customerId], references: [id])
+  event             Event              @relation(fields: [eventId], references: [id])
+  bookingItems      BookingItem[]
+  deepInfoResponses DeepInfoResponse[]
 
   @@map("bookings")
 }
@@ -143,7 +144,6 @@ model Event {
   posterImage           String?
   type                  EventType
   eventDate             DateTime?
-  price                 Decimal?
   feePerEntry           Decimal?
   capacity              Int?
   isActive              Boolean               @default(true)
@@ -166,6 +166,25 @@ model DeepInfoField {
 
   eventId Int
   event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  responses DeepInfoResponse[]
+}
+
+// Customer-submitted answers to an event's DeepInfoFields, keyed to a booking.
+// Owned by yoye-admin (source of truth); the storefront writes them from the
+// booking detail page. Mirrors the admin table "deep_info_responses".
+model DeepInfoResponse {
+  id        Int      @id @default(autoincrement())
+  bookingId Int
+  fieldId   Int
+  value     String
+  createdAt DateTime @default(now())
+
+  booking Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  field   DeepInfoField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, fieldId])
+  @@map("deep_info_responses")
 }
 
 model ShowRound {
