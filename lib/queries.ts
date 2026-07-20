@@ -3,7 +3,9 @@ import {
   fetchEvents,
   fetchBookings,
   fetchBookingDetail,
+  fetchServiceFeeInfo,
   saveDeepInfoResponses,
+  PaymentAuthError,
   type DeepInfoResponseInput,
 } from "./api";
 
@@ -50,6 +52,21 @@ export function useBookingDetailQuery(bookingCode: string | undefined) {
     queryKey: ["booking-detail", bookingCode],
     queryFn: ({ signal }) => fetchBookingDetail(bookingCode as string, signal),
     enabled: Boolean(bookingCode),
+  });
+}
+
+/**
+ * Server state: the ค่ากด amount + payability for a single booking (owner-only).
+ * A 401 (not logged in) is surfaced as PaymentAuthError and not retried so the
+ * payment page can prompt for LINE login.
+ */
+export function useServiceFeeInfoQuery(bookingCode: string | undefined) {
+  return useQuery({
+    queryKey: ["service-fee-info", bookingCode],
+    queryFn: ({ signal }) => fetchServiceFeeInfo(bookingCode as string, signal),
+    enabled: Boolean(bookingCode),
+    retry: (failureCount, error) =>
+      !(error instanceof PaymentAuthError) && failureCount < 1,
   });
 }
 

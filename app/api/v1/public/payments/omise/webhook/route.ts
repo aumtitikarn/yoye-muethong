@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { retrieveCharge } from "@/lib/omise";
-import { finalizeChargeToBooking } from "@/lib/booking-finalize";
+import {
+  finalizeChargeToBooking,
+  finalizeServiceFeeCharge,
+} from "@/lib/booking-finalize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,12 +36,17 @@ export async function POST(req: NextRequest) {
   try {
     const charge = await retrieveCharge(objectId);
     if (charge.paid && charge.status === "successful") {
-      // Idempotently create the booking from the charge metadata.
-      const result = await finalizeChargeToBooking(charge.id);
+      // Route by the metadata we set at charge creation: service-fee charges
+      // settle an existing booking; everything else is a deposit → new booking.
+      const isServiceFee = charge.metadata.kind === "service_fee";
+      const result = isServiceFee
+        ? await finalizeServiceFeeCharge(charge.id)
+        : await finalizeChargeToBooking(charge.id);
       if (result.ok) {
         console.info(
-          `omise webhook: charge ${charge.id} paid → booking ${result.bookingCode}` +
-            (result.created ? " (created)" : " (already existed)")
+          `omise webhook: charge ${charge.id} paid → ` +
+            `${isServiceFee ? "service-fee" : "booking"} ${result.bookingCode}` +
+            (result.created ? " (applied)" : " (already settled)")
         );
       }
     } else if (charge.status === "failed" || charge.status === "expired") {

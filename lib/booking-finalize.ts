@@ -104,3 +104,63 @@ export async function finalizeChargeToBooking(
 
   return { ok: true, bookingCode, created: true };
 }
+
+/**
+ * Apply a paid Omise **service-fee** (ค่ากด) charge to an EXISTING booking.
+ * Unlike the deposit flow (which creates a booking), the booking already exists
+ * here — a FORM booking that reached FORM_HAS_NAME (มีรายชื่อ). On a genuinely
+ * paid charge we mark it COMPLETED and record the payment.
+ *
+ * The charge is re-fetched from Omise (never trusting the caller) and the amount
+ * is read from the charge metadata we set at creation — itself computed
+ * server-side — so the client can never dictate the paid amount.
+ *
+ * Idempotent + race-safe: the status transition is a guarded `updateMany` on
+ * `status = FORM_HAS_NAME`, so a duplicate call (webhook + client confirm) only
+ * increments `totalPaid` once.
+ */
+export async function finalizeServiceFeeCharge(
+  chargeId: string,
+): Promise<FinalizeResult> {
+  const charge = await retrieveCharge(chargeId);
+  if (!(charge.paid && charge.status === "successful")) {
+    return { ok: false, reason: "not_paid" };
+  }
+
+  const m = charge.metadata;
+  const bookingCode = m.bookingCode;
+  const amountBaht = Number(m.serviceFeeBaht ?? 0);
+  if (
+    m.kind !== "service_fee" ||
+    !bookingCode ||
+    !Number.isFinite(amountBaht) ||
+    amountBaht <= 0
+  ) {
+    return { ok: false, reason: "bad_metadata" };
+  }
+
+  const booking = await prisma.booking.findUnique({
+    where: { bookingCode },
+    select: { id: true, status: true },
+  });
+  if (!booking) return { ok: false, reason: "bad_metadata" };
+
+  // Already applied by a concurrent webhook/confirm → no-op.
+  if (booking.status === "COMPLETED") {
+    return { ok: true, bookingCode, created: false };
+  }
+
+  // Guarded transition: only the first caller (status still FORM_HAS_NAME)
+  // applies the payment, so totalPaid is never double-counted.
+  const res = await prisma.booking.updateMany({
+    where: { id: booking.id, status: "FORM_HAS_NAME" },
+    data: {
+      status: "COMPLETED",
+      paymentStatus: "PAID",
+      serviceFee: amountBaht,
+      totalPaid: { increment: amountBaht },
+    },
+  });
+
+  return { ok: true, bookingCode, created: res.count > 0 };
+}

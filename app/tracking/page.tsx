@@ -299,6 +299,10 @@ export default function TrackingPage() {
                       dateStyle: "long",
                     }).format(row.paymentDeadline)
                   : "";
+                const payHref =
+                  row.status === TrackingStatus.WAIT_SERVICE_FEE
+                    ? `/payments/${row.bookingId}`
+                    : "/bookings";
 
                 return (
                   <Card
@@ -348,7 +352,7 @@ export default function TrackingPage() {
                         className="w-full gap-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-md shadow-amber-500/20"
                         asChild
                       >
-                        <Link href="/bookings">
+                        <Link href={payHref}>
                           <CreditCard className="size-4" />
                           ชำระเงินทันที
                         </Link>
@@ -413,6 +417,12 @@ export default function TrackingPage() {
                   const needsPayment =
                     row.status === TrackingStatus.WAIT_FULL_PAYMENT ||
                     row.status === TrackingStatus.WAIT_SERVICE_FEE;
+                  // Service fee (ค่ากด) has its own per-booking Omise page;
+                  // the ฝากจ่าย ticket flow still goes through /bookings.
+                  const payHref =
+                    row.status === TrackingStatus.WAIT_SERVICE_FEE
+                      ? `/payments/${row.bookingId}`
+                      : "/bookings";
                   return (
                     <div
                       key={row.bookingId}
@@ -455,7 +465,7 @@ export default function TrackingPage() {
                             className="mt-3 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
                             asChild
                           >
-                            <Link href={`/bookings/${row.bookingId}`}>
+                            <Link href={`/bookings/${row.bookingId}?edit=1`}>
                               <ClipboardPen className="size-3.5" />
                               กรอกข้อมูลการจองเพิ่มเติม
                             </Link>
@@ -468,7 +478,7 @@ export default function TrackingPage() {
                           className="mt-2 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
                           asChild
                         >
-                          <Link href="/bookings">
+                          <Link href={payHref}>
                             <CreditCard className="size-3.5" />
                             ชำระเงิน
                           </Link>
@@ -496,6 +506,11 @@ export default function TrackingPage() {
                       const needsPayment =
                         row.status === TrackingStatus.WAIT_FULL_PAYMENT ||
                         row.status === TrackingStatus.WAIT_SERVICE_FEE;
+                      // Service fee (ค่ากด) → dedicated Omise page; ฝากจ่าย → /bookings.
+                      const payHref =
+                        row.status === TrackingStatus.WAIT_SERVICE_FEE
+                          ? `/payments/${row.bookingId}`
+                          : "/bookings";
                       return (
                         <TableRow
                           key={row.bookingId}
@@ -538,7 +553,7 @@ export default function TrackingPage() {
                                     className="gap-1.5 text-xs btn-glow-border rounded-xl font-semibold text-foreground"
                                     asChild
                                   >
-                                    <Link href={`/bookings/${row.bookingId}`}>
+                                    <Link href={`/bookings/${row.bookingId}?edit=1`}>
                                       <ClipboardPen className="size-3.5" />
                                       กรอกข้อมูลเพิ่มเติม
                                     </Link>
@@ -551,7 +566,7 @@ export default function TrackingPage() {
                                   className="gap-1.5 text-xs btn-glow-border rounded-xl font-semibold text-foreground"
                                   asChild
                                 >
-                                  <Link href="/bookings">
+                                  <Link href={payHref}>
                                     <CreditCard className="size-3.5" />
                                     ชำระเงิน
                                   </Link>

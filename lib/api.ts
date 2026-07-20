@@ -119,6 +119,90 @@ export async function getOmiseChargeStatus(
   return json.data;
 }
 
+// ── Omise payment (service fee / ค่ากด step) ──────────────────────
+
+export interface ServiceFeeInfo {
+  bookingCode: string;
+  eventName: string;
+  quantity: number;
+  feePerEntry: number;
+  amountBaht: number;
+  payable: boolean;
+  alreadyPaid: boolean;
+  status: string;
+}
+
+/** Fetch the ค่ากด amount + payability for the caller's own booking. */
+export async function fetchServiceFeeInfo(
+  bookingCode: string,
+  signal?: AbortSignal
+): Promise<ServiceFeeInfo> {
+  const res = await fetch(
+    `${API_BASE_URL}/public/payments/service-fee/${encodeURIComponent(bookingCode)}`,
+    { signal, cache: "no-store" }
+  );
+  const json = (await res.json().catch(() => null)) as
+    | { data?: ServiceFeeInfo; message?: string }
+    | null;
+  if (res.status === 401) {
+    throw new PaymentAuthError(json?.message ?? "กรุณาเข้าสู่ระบบด้วย LINE ก่อน");
+  }
+  if (!res.ok || !json?.data) {
+    throw new Error(json?.message ?? `โหลดข้อมูลไม่สำเร็จ (${res.status})`);
+  }
+  return json.data;
+}
+
+/**
+ * Create an Omise charge for a booking's service fee (ค่ากด). Requires a LINE
+ * session + ownership; the server recomputes the amount. Throws PaymentAuthError
+ * on 401 so the caller can prompt for login.
+ */
+export async function createServiceFeeCharge(input: {
+  nonce: string;
+  bookingCode: string;
+}): Promise<OmiseChargeStatus> {
+  const res = await fetch(
+    `${API_BASE_URL}/public/payments/service-fee/charge`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  );
+  const json = (await res.json().catch(() => null)) as
+    | { data?: OmiseChargeStatus; message?: string }
+    | null;
+  if (res.status === 401) {
+    throw new PaymentAuthError(json?.message ?? "กรุณาเข้าสู่ระบบด้วย LINE ก่อน");
+  }
+  if (!res.ok || !json?.data) {
+    throw new Error(json?.message ?? `ชำระเงินไม่สำเร็จ (${res.status})`);
+  }
+  return json.data;
+}
+
+/** Confirm a paid ค่ากด charge so the booking is settled (idempotent server-side). */
+export async function confirmServiceFeeCharge(
+  chargeId: string
+): Promise<{ bookingCode: string; created: boolean }> {
+  const res = await fetch(
+    `${API_BASE_URL}/public/payments/service-fee/confirm`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chargeId }),
+    }
+  );
+  const json = (await res.json().catch(() => null)) as
+    | { data?: { bookingCode: string; created: boolean }; message?: string }
+    | null;
+  if (!res.ok || !json?.data) {
+    throw new Error(json?.message ?? "บันทึกการชำระเงินไม่สำเร็จ");
+  }
+  return json.data;
+}
+
 // ── Tracking (customer bookings) ───────────────────────────────────
 
 export interface TrackingRowDTO {

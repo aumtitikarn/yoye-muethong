@@ -26,7 +26,8 @@ const STATUS_MAP: Record<BookingStatus, TrackingStatus> = {
   PARTIAL_SELF_TEAM_BOOKING: TrackingStatus.PARTIAL_TICKETS,
   FORM_WAITING_RESULT: TrackingStatus.PRESSING,
   FORM_MISSED: TrackingStatus.WAIT_REFUND,
-  FORM_HAS_NAME: TrackingStatus.COMPLETE_TICKETS,
+  // มีรายชื่อ → ลูกค้าต้องชำระค่ากด ให้แสดงปุ่มชำระเงินบนหน้าติดตาม
+  FORM_HAS_NAME: TrackingStatus.WAIT_SERVICE_FEE,
   FORM_NO_NAME: TrackingStatus.WAIT_REFUND,
   WAITING_SUMMARY: TrackingStatus.PRESSING,
   WAITING_SERVICE_FEE: TrackingStatus.WAIT_SERVICE_FEE,
