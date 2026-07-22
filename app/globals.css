@@ -65,6 +65,21 @@
   --muted-foreground: oklch(0.55 0.04 45);
   --border: #f3d4c1; /* ปรับสีเส้นขอบให้ออกโทนส้มอ่อนๆ */
 
+  /* Surfaces — คลีน ขาวอมครีม ตัดกับพื้นหลังครีมอ่อน */
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+  --accent-foreground: #ffffff;
+
+  /* Form controls */
+  --input: var(--border);
+  --ring: var(--primary);
+
+  /* Destructive (แดงอ่านง่ายบนพื้นขาว) */
+  --destructive: oklch(0.62 0.21 25.5);
+  --destructive-foreground: #ffffff;
+
   /* Modern Styling */
   --radius: 1rem;
   --font-sans: "Inter", "Kanit", sans-serif;
