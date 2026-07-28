@@ -215,6 +215,8 @@ export interface TrackingRowDTO {
   totalPrice: number;
   /** True when the customer has already saved extra-field answers for this booking. */
   haveDeepInfo: boolean;
+  /** True when the customer has already submitted refund bank info for this booking. */
+  haveRefundInfo: boolean;
 }
 
 export type FetchBookingsResult =
@@ -336,6 +338,37 @@ export async function saveDeepInfoResponses(
       message?: string;
     } | null;
     throw new Error(json?.message ?? `บันทึกข้อมูลไม่สำเร็จ (${res.status})`);
+  }
+}
+
+export interface RefundInfoInput {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+}
+
+/**
+ * Save the caller's refund bank details for a booking that is awaiting a
+ * refund. Requires a LINE session + ownership (enforced server-side). Throws
+ * on failure so the caller can surface the message.
+ */
+export async function submitRefundInfo(
+  bookingCode: string,
+  input: RefundInfoInput
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE_URL}/public/bookings/${encodeURIComponent(bookingCode)}/refund`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  );
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(json?.message ?? `บันทึกข้อมูลคืนเงินไม่สำเร็จ (${res.status})`);
   }
 }
 

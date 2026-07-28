@@ -24,6 +24,16 @@ export const serviceFeeBookingSelect = {
   customer: { select: { lineUserId: true } },
   event: { select: { name: true, type: true, feePerEntry: true } },
   bookingItems: { select: { quantity: true } },
+  // Latest bill created by the admin — its finalAmount is the exact ค่ากด due.
+  fulfillment: {
+    select: {
+      billLogs: {
+        select: { finalAmount: true },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+    },
+  },
 } satisfies Prisma.BookingSelect;
 
 export type ServiceFeeBookingRow = Prisma.BookingGetPayload<{
@@ -41,8 +51,10 @@ export function serviceFeeInfo(b: ServiceFeeBookingRow): ServiceFeeInfoDTO {
     b.bookingItems.reduce((s, i) => s + i.quantity, 0),
   );
   const feePerEntry = b.event.feePerEntry ? Number(b.event.feePerEntry) : 0;
-  const amountBaht = feePerEntry * quantity;
-  const isForm = b.event.type === "FORM";
+  // The customer pays the exact amount the admin billed (finalAmount of the
+  // latest bill), not a recomputed feePerEntry × quantity. The bill nets out
+  // deposits, partial fills and VAT, so it is the single source of truth.
+  const amountBaht = b.fulfillment?.billLogs[0]?.finalAmount ?? 0;
 
   return {
     bookingCode: b.bookingCode,
@@ -50,8 +62,10 @@ export function serviceFeeInfo(b: ServiceFeeBookingRow): ServiceFeeInfoDTO {
     quantity,
     feePerEntry,
     amountBaht,
-    payable: isForm && b.status === "FORM_HAS_NAME" && amountBaht > 0,
-    alreadyPaid: b.status === "COMPLETED",
+    // Payable once the admin has created the bill (สร้างบิล → รอตรวจสลิปค่ากด),
+    // for both FORM and TICKET events — the bill amount is what's owed.
+    payable: b.status === "WAITING_SERVICE_FEE_VERIFY" && amountBaht > 0,
+    alreadyPaid: b.status === "SERVICE_FEE_PAID" || b.status === "COMPLETED",
     status: b.status,
   };
 }

@@ -18,6 +18,8 @@ export interface TrackingRowDTO {
   totalPrice: number;
   /** True when the customer has already saved extra-field answers for this booking. */
   haveDeepInfo: boolean;
+  /** True when the customer has already submitted refund bank info for this booking. */
+  haveRefundInfo: boolean;
 }
 
 const bookingSelect = {
@@ -36,7 +38,7 @@ const bookingSelect = {
       zone: { select: { name: true } },
     },
   },
-  _count: { select: { deepInfoResponses: true } },
+  _count: { select: { deepInfoResponses: true, refundRequests: true } },
 } satisfies Prisma.BookingSelect;
 
 type BookingRow = Prisma.BookingGetPayload<{ select: typeof bookingSelect }>;
@@ -81,6 +83,7 @@ function toDTO(b: BookingRow): TrackingRowDTO {
     totalPrice:
       b.netCardPrice + b.serviceFee + b.shippingFee + b.vatAmount,
     haveDeepInfo: b._count.deepInfoResponses > 0,
+    haveRefundInfo: b._count.refundRequests > 0,
   };
 }
 

@@ -146,16 +146,17 @@ export async function finalizeServiceFeeCharge(
   if (!booking) return { ok: false, reason: "bad_metadata" };
 
   // Already applied by a concurrent webhook/confirm → no-op.
-  if (booking.status === "COMPLETED") {
+  if (booking.status === "SERVICE_FEE_PAID" || booking.status === "COMPLETED") {
     return { ok: true, bookingCode, created: false };
   }
 
-  // Guarded transition: only the first caller (status still FORM_HAS_NAME)
-  // applies the payment, so totalPaid is never double-counted.
+  // Guarded transition: only the first caller (status still
+  // WAITING_SERVICE_FEE_VERIFY, i.e. the admin billed but payment not yet
+  // applied) settles the ค่ากด, so totalPaid is never double-counted.
   const res = await prisma.booking.updateMany({
-    where: { id: booking.id, status: "FORM_HAS_NAME" },
+    where: { id: booking.id, status: "WAITING_SERVICE_FEE_VERIFY" },
     data: {
-      status: "COMPLETED",
+      status: "SERVICE_FEE_PAID",
       paymentStatus: "PAID",
       serviceFee: amountBaht,
       totalPaid: { increment: amountBaht },

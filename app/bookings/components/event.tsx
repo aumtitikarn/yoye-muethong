@@ -121,13 +121,13 @@ export default function Event({ onBack, onSelect }: EventProps) {
                   }}
                 >
                   {/* Poster */}
-                  <div className="relative">
+                  <div className="relative aspect-[3/4] w-full overflow-hidden">
                     <Image
                       src={event.poster || "/con.jpeg"}
                       alt={event.name}
-                      width={600}
-                      height={400}
-                      className="object-cover w-full h-auto"
+                      fill
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                      className="object-cover"
                       priority={index === 0}
                     />
                     <span

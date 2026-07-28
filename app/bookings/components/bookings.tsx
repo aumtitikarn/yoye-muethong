@@ -109,10 +109,8 @@ export default function BookingInfo({
     (z) => z.id.toString() === form.zoneId,
   );
 
-  const depositPrice =
-    concertData.eventTypes === EEventTypes.form
-      ? form.ticketCount * 100
-      : form.ticketCount * (selectedZone?.servicePrice ?? 0);
+  // มัดจำคิดคงที่ 100 บาท ต่อ 1 ใบ (งานกดบัตร) หรือ 1 รายชื่อ (งานฟอร์ม)
+  const depositPrice = form.ticketCount * 100;
 
   const phoneValid = isValidPhone(form.phone);
 
@@ -661,12 +659,9 @@ export default function BookingInfo({
                         {concertData.eventTypes === EEventTypes.form ? (
                           <>มัดจำ {form.ticketCount} รายชื่อ × ฿100</>
                         ) : selectedZone ? (
-                          <>
-                            มัดจำ {form.ticketCount} ใบ × ฿
-                            {(selectedZone.servicePrice ?? 0).toLocaleString()}
-                          </>
+                          <>มัดจำ {form.ticketCount} ใบ × ฿100</>
                         ) : (
-                          <>เลือกโซนเพื่อคำนวณค่ามัดจำ</>
+                          <>เลือกโซนก่อนดำเนินการต่อ</>
                         )}
                       </div>
                       <div className="text-sm font-semibold text-primary">

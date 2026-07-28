@@ -5,8 +5,10 @@ import {
   fetchBookingDetail,
   fetchServiceFeeInfo,
   saveDeepInfoResponses,
+  submitRefundInfo,
   PaymentAuthError,
   type DeepInfoResponseInput,
+  type RefundInfoInput,
 } from "./api";
 
 /** Server state: bookable events for step 1 of the booking flow. */
@@ -80,6 +82,18 @@ export function useSaveDeepInfoMutation(bookingCode: string | undefined) {
       queryClient.invalidateQueries({
         queryKey: ["booking-detail", bookingCode],
       });
+    },
+  });
+}
+
+/** Save the customer's refund bank info for a booking awaiting a refund. */
+export function useSubmitRefundMutation(bookingCode: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RefundInfoInput) =>
+      submitRefundInfo(bookingCode as string, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
     },
   });
 }

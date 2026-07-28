@@ -35,6 +35,7 @@ import {
   CreditCard,
   EllipsisVertical,
   FileText,
+  Landmark,
   RefreshCcw,
 } from "lucide-react";
 
@@ -47,6 +48,7 @@ type TrackingRow = {
   paymentDeadline?: Date;
   totalPrice: number;
   haveDeepInfo: boolean;
+  haveRefundInfo: boolean;
 };
 
 const PAGE_SIZE = 5;
@@ -63,6 +65,7 @@ function dtoToRow(dto: TrackingRowDTO): TrackingRow {
       : undefined,
     totalPrice: dto.totalPrice,
     haveDeepInfo: dto.haveDeepInfo,
+    haveRefundInfo: dto.haveRefundInfo,
   };
 }
 
@@ -471,6 +474,21 @@ export default function TrackingPage() {
                             </Link>
                           </Button>
                         )}
+                      {row.status === TrackingStatus.WAIT_REFUND && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mt-2 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
+                          asChild
+                        >
+                          <Link href={`/refund/${row.bookingId}`}>
+                            <Landmark className="size-3.5" />
+                            {row.haveRefundInfo
+                              ? "แก้ไขข้อมูลคืนเงิน"
+                              : "เพิ่มข้อมูลคืนเงิน"}
+                          </Link>
+                        </Button>
+                      )}
                       {needsPayment && (
                         <Button
                           size="sm"
@@ -559,6 +577,21 @@ export default function TrackingPage() {
                                     </Link>
                                   </Button>
                                 )}
+                              {row.status === TrackingStatus.WAIT_REFUND && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="gap-1.5 text-xs btn-glow-border rounded-xl font-semibold text-foreground"
+                                  asChild
+                                >
+                                  <Link href={`/refund/${row.bookingId}`}>
+                                    <Landmark className="size-3.5" />
+                                    {row.haveRefundInfo
+                                      ? "แก้ไขข้อมูลคืนเงิน"
+                                      : "เพิ่มข้อมูลคืนเงิน"}
+                                  </Link>
+                                </Button>
+                              )}
                               {needsPayment && (
                                 <Button
                                   size="sm"

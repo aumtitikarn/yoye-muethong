@@ -105,12 +105,8 @@ export default function ServiceFeePaymentPage() {
                 <p className="font-semibold text-foreground">{data.eventName}</p>
               </div>
               <div className="flex items-center justify-between border-t border-border/50 pt-3 text-sm">
-                <span className="text-muted-foreground">
-                  ค่ากด × {data.quantity} รายชื่อ
-                </span>
-                <span className="text-foreground">
-                  ฿{data.feePerEntry.toLocaleString()} / รายชื่อ
-                </span>
+                <span className="text-muted-foreground">ค่ากดตามบิล</span>
+                <span className="text-foreground">{data.quantity} รายการ</span>
               </div>
               <div className="flex items-center justify-between border-t border-border/50 pt-3">
                 <span className="font-semibold text-foreground">ยอดที่ต้องชำระ</span>

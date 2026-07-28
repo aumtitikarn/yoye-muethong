@@ -7,6 +7,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -162,6 +170,7 @@ function BookingDetailContent() {
   const [adjustedQuantity, setAdjustedQuantity] = useState(1);
   const [extraValues, setExtraValues] = useState<Record<number, string>>({});
   const [isEditingZone, setIsEditingZone] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Sync editable state once the real booking loads.
   useEffect(() => {
@@ -234,6 +243,8 @@ function BookingDetailContent() {
     (f) => !f.isRequired || (extraValues[f.id] ?? "").trim().length > 0,
   );
   const canSubmit = selectedZoneId !== null && extraFieldsValid;
+  // Form-type events have no zone selection, so they only need the fields filled.
+  const canConfirm = isFormType ? extraFieldsValid : canSubmit;
 
   // The customer has already submitted their extra info if the loaded booking
   // carries any saved answer — in that case we hide the fill-in button.
@@ -248,6 +259,17 @@ function BookingDetailContent() {
       })),
       { onSuccess: () => router.push("/tracking") },
     );
+  };
+
+  // Single unified action: persist any unsaved extra info, otherwise just
+  // continue to the tracking page. Triggered from the confirm dialog.
+  const handleConfirm = () => {
+    setConfirmOpen(false);
+    if (extraFields.length > 0 && !hasSavedDeepInfo) {
+      handleSaveDeepInfo();
+    } else {
+      router.push("/tracking");
+    }
   };
 
   // Premium gradient CTA — higher contrast than the pastel primary fill.
@@ -708,7 +730,7 @@ function BookingDetailContent() {
                         placeholder={field.label}
                         value={extraValues[field.id] ?? ""}
                         disabled={hasSavedDeepInfo}
-                        className="h-11 rounded-xl"
+                        className="h-11 rounded-xl text-foreground disabled:opacity-100 disabled:text-foreground"
                         onChange={(e) => {
                           if (saveDeepInfo.isSuccess) saveDeepInfo.reset();
                           setExtraValues((prev) => ({
@@ -722,104 +744,147 @@ function BookingDetailContent() {
                 </div>
               )}
 
-              {extraFields.length > 0 && !hasSavedDeepInfo && (
-                <div className="space-y-2 pt-1">
-                  <Button
-                    className={ctaClass}
-                    onClick={handleSaveDeepInfo}
-                    disabled={!extraFieldsValid || isSaving}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        กำลังบันทึก...
-                      </>
-                    ) : (
-                      <>
-                        บันทึกข้อมูล
-                        <ArrowRight className="size-4" />
-                      </>
-                    )}
-                  </Button>
-                  {!extraFieldsValid && (
-                    <p className="text-center text-xs text-muted-foreground">
-                      กรุณากรอกช่องที่มีเครื่องหมาย{" "}
-                      <span className="text-destructive">*</span> ให้ครบ
-                    </p>
-                  )}
-                  {saveDeepInfo.isError && (
-                    <p className="text-center text-sm text-destructive">
-                      {saveDeepInfo.error instanceof Error
-                        ? saveDeepInfo.error.message
-                        : "บันทึกข้อมูลไม่สำเร็จ"}
-                    </p>
-                  )}
-                </div>
+              {extraFields.length > 0 && !hasSavedDeepInfo && !extraFieldsValid && (
+                <p className="pt-1 text-center text-xs text-muted-foreground">
+                  กรุณากรอกช่องที่มีเครื่องหมาย{" "}
+                  <span className="text-destructive">*</span> ให้ครบ
+                </p>
               )}
             </Card>
 
-            {/* Price summary & submit — hidden for form-type events */}
-            {!isFormType && (
-              <Card className="space-y-4 p-5">
-                {paymentMethod === "store_pay" && (
-                  <div className="relative overflow-hidden rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {totalLabel}
-                        </div>
-                        <div className="text-3xl font-black text-accent">
-                          ฿{displayTotal.toLocaleString()}
-                        </div>
+            {/* Price summary & single confirm CTA — only in edit mode.
+                The plain detail view (no ?edit=1) stays read-only. */}
+            {allowEdit && (
+            <Card className="space-y-4 p-5">
+              {!isFormType && paymentMethod === "store_pay" && (
+                <div className="relative overflow-hidden rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {totalLabel}
                       </div>
-                      <div className="space-y-1 text-right">
-                        <div className="text-xs font-medium text-foreground">
-                          {selectedZone?.name ?? booking.zone}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {booking.feePerEntry ? (
-                            <>
-                              {ticketsToCharge} × ฿
-                              {booking.feePerEntry.toLocaleString()}
-                            </>
-                          ) : (
-                            <>
-                              {ticketsToCharge} ใบ × (฿
-                              {(selectedZone?.price ?? 0).toLocaleString()} +{" "}
-                              {booking.serviceFee.toLocaleString()})
-                            </>
-                          )}
-                        </div>
+                      <div className="text-3xl font-black text-accent">
+                        ฿{displayTotal.toLocaleString()}
                       </div>
                     </div>
-                    <div className="mt-3 border-t border-primary/20 pt-2">
-                      <p className="text-[11px] font-medium leading-relaxed text-amber-600">
-                        ⚠️ ราคานี้ยังไม่รวมภาษีมูลค่าเพิ่ม 7%
-                      </p>
+                    <div className="space-y-1 text-right">
+                      <div className="text-xs font-medium text-foreground">
+                        {selectedZone?.name ?? booking.zone}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {booking.feePerEntry ? (
+                          <>
+                            {ticketsToCharge} × ฿
+                            {booking.feePerEntry.toLocaleString()}
+                          </>
+                        ) : (
+                          <>
+                            {ticketsToCharge} ใบ × (฿
+                            {(selectedZone?.price ?? 0).toLocaleString()} +{" "}
+                            {booking.serviceFee.toLocaleString()})
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                )}
+                  <div className="mt-3 border-t border-primary/20 pt-2">
+                    <p className="text-[11px] font-medium leading-relaxed text-amber-600">
+                      ⚠️ ราคานี้ยังไม่รวมภาษีมูลค่าเพิ่ม 7%
+                    </p>
+                  </div>
+                </div>
+              )}
 
-                <Button
-                  className={ctaClass}
-                  disabled={!canSubmit}
-                  asChild
-                >
-                  <Link href="/tracking">
+              <Button
+                className={ctaClass}
+                disabled={!canConfirm || isSaving}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  <>
                     ยืนยันข้อมูล
                     <ArrowRight className="size-4" />
-                  </Link>
-                </Button>
-                {!canSubmit && (
-                  <p className="text-center text-xs text-muted-foreground">
-                    กรุณาเลือกโซนและกรอกข้อมูลให้ครบก่อนยืนยัน
-                  </p>
+                  </>
                 )}
-              </Card>
+              </Button>
+              {!canConfirm && (
+                <p className="text-center text-xs text-muted-foreground">
+                  {isFormType
+                    ? "กรุณากรอกข้อมูลให้ครบก่อนยืนยัน"
+                    : "กรุณาเลือกโซนและกรอกข้อมูลให้ครบก่อนยืนยัน"}
+                </p>
+              )}
+              {saveDeepInfo.isError && (
+                <p className="text-center text-sm text-destructive">
+                  {saveDeepInfo.error instanceof Error
+                    ? saveDeepInfo.error.message
+                    : "บันทึกข้อมูลไม่สำเร็จ"}
+                </p>
+              )}
+            </Card>
             )}
           </main>
         </div>
       </div>
+
+      {/* Confirm dialog — single gate before saving / continuing */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>ยืนยันข้อมูลการจอง</DialogTitle>
+            <DialogDescription>
+              กรุณาตรวจสอบข้อมูลให้ถูกต้องก่อนยืนยัน หลังจากยืนยันแล้วจะไม่สามารถแก้ไขได้
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 rounded-xl border border-border/60 bg-secondary/10 p-4 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-muted-foreground">งาน</span>
+              <span className="text-right font-semibold">
+                {booking.eventName}
+              </span>
+            </div>
+            {!isFormType && (
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-muted-foreground">โซน</span>
+                <span className="text-right font-semibold">
+                  {selectedZone?.name ?? booking.zone}
+                </span>
+              </div>
+            )}
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-muted-foreground">จำนวน</span>
+              <span className="text-right font-semibold">
+                {ticketsToCharge} {unitWord}
+              </span>
+            </div>
+            <div className="flex items-start justify-between gap-3 border-t border-border/60 pt-2">
+              <span className="text-muted-foreground">{totalLabel}</span>
+              <span className="text-right text-base font-black text-accent">
+                ฿{displayTotal.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setConfirmOpen(false)}
+            >
+              ยกเลิก
+            </Button>
+            <Button className="flex-1" onClick={handleConfirm}>
+              ยืนยัน
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
