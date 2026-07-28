@@ -13,6 +13,7 @@ interface RefundInfoBody {
   bankName?: string;
   accountNumber?: string;
   accountHolder?: string;
+  amount?: number;
 }
 
 // POST /api/v1/public/bookings/:code/refund
@@ -49,6 +50,7 @@ export async function POST(
   const accountHolder = (body.accountHolder ?? "").trim();
   // Keep only digits for the account number.
   const accountNumber = (body.accountNumber ?? "").replace(/\D/g, "");
+  const amount = Number(body.amount);
 
   if (!bankName || !accountHolder || accountNumber.length < 6) {
     return NextResponse.json(
@@ -56,6 +58,12 @@ export async function POST(
         message:
           "กรุณากรอกธนาคาร ชื่อเจ้าของบัญชี และเลขบัญชี/PromptPay/บัตรประชาชนให้ถูกต้อง",
       },
+      { status: 400 }
+    );
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return NextResponse.json(
+      { message: "กรุณากรอกยอดเงินคืนให้ถูกต้อง" },
       { status: 400 }
     );
   }
@@ -69,7 +77,6 @@ export async function POST(
       select: {
         id: true,
         status: true,
-        refundAmount: true,
         deletedAt: true,
         customer: { select: { lineUserId: true } },
       },
@@ -99,7 +106,7 @@ export async function POST(
     if (existing) {
       await prisma.refundRequest.update({
         where: { id: existing.id },
-        data: { bankName, accountNumber, accountHolder, amount: booking.refundAmount },
+        data: { bankName, accountNumber, accountHolder, amount },
       });
     } else {
       await prisma.refundRequest.create({
@@ -108,7 +115,7 @@ export async function POST(
           bankName,
           accountNumber,
           accountHolder,
-          amount: booking.refundAmount,
+          amount,
         },
       });
     }

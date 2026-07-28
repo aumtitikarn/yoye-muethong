@@ -345,6 +345,7 @@ export interface RefundInfoInput {
   bankName: string;
   accountNumber: string;
   accountHolder: string;
+  amount: number;
 }
 
 /**
