@@ -4,6 +4,7 @@ import {
   fetchBookings,
   fetchBookingDetail,
   fetchServiceFeeInfo,
+  fetchTicketFeeInfo,
   saveDeepInfoResponses,
   submitRefundInfo,
   PaymentAuthError,
@@ -66,6 +67,16 @@ export function useServiceFeeInfoQuery(bookingCode: string | undefined) {
   return useQuery({
     queryKey: ["service-fee-info", bookingCode],
     queryFn: ({ signal }) => fetchServiceFeeInfo(bookingCode as string, signal),
+    enabled: Boolean(bookingCode),
+    retry: (failureCount, error) =>
+      !(error instanceof PaymentAuthError) && failureCount < 1,
+  });
+}
+
+export function useTicketFeeInfoQuery(bookingCode: string | undefined) {
+  return useQuery({
+    queryKey: ["ticket-fee-info", bookingCode],
+    queryFn: ({ signal }) => fetchTicketFeeInfo(bookingCode as string, signal),
     enabled: Boolean(bookingCode),
     retry: (failureCount, error) =>
       !(error instanceof PaymentAuthError) && failureCount < 1,

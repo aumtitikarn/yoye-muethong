@@ -1,8 +1,11 @@
 // enum tracking
 
 export enum TrackingStatus {
+  WAIT_QUEUE_APPROVAL = "รอแอดมินอนุมัติคิว",
   BOOKING_CONFIRMED = "จองคิวสำเร็จ",
   WAIT_FULL_PAYMENT = "รอชำระค่าบัตร (กรณีฝากจ่าย)",
+  WAIT_ADMIN_CONFIRM = "รอแอดมินยืนยันข้อมูล",
+  READY_TO_PRESS = "พร้อมกดบัตร",
   PREPARE_PRESS = "เตรียมตัวกดบัตร",
   PRESSING = "กำลังดำเนินการกดบัตร",
   PARTIAL_TICKETS = "ได้บัตรแล้ว (บางส่วน)",
@@ -21,6 +24,10 @@ type StatusMetadata = {
 };
 
 export const STATUS_METADATA: Record<TrackingStatus, StatusMetadata> = {
+  [TrackingStatus.WAIT_QUEUE_APPROVAL]: {
+    description: "ทางร้านได้รับข้อมูลแล้ว อยู่ระหว่างรอแอดมินตรวจสอบและอนุมัติคิว",
+    colorClass: "bg-amber-100 text-amber-900",
+  },
   [TrackingStatus.BOOKING_CONFIRMED]: {
     description: "ลูกค้าอุ่นใจได้ว่ามีชื่ออยู่ในระบบแล้ว",
     colorClass: "bg-emerald-100 text-emerald-800",
@@ -29,6 +36,14 @@ export const STATUS_METADATA: Record<TrackingStatus, StatusMetadata> = {
     description:
       "กรุณาชำระเงินค่าบัตรก่อนวันเวลาที่กำหนด มิเช่นนั้นสถานะจะถูกยกเลิก",
     colorClass: "bg-amber-100 text-amber-900",
+  },
+  [TrackingStatus.WAIT_ADMIN_CONFIRM]: {
+    description: "แอดมินกำลังตรวจสอบและยืนยันข้อมูลการจองของลูกค้า",
+    colorClass: "bg-amber-100 text-amber-900",
+  },
+  [TrackingStatus.READY_TO_PRESS]: {
+    description: "ข้อมูลครบถ้วนแล้ว คิวพร้อมสำหรับการกดบัตร รอเวลาเปิดจอง",
+    colorClass: "bg-sky-100 text-sky-800",
   },
   [TrackingStatus.PREPARE_PRESS]: {
     description: "ให้ลูกค้ารู้ว่าข้อมูลทุกอย่างเป๊ะแล้ว รอเวลาเปิดจอง",

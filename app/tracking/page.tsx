@@ -305,7 +305,9 @@ export default function TrackingPage() {
                 const payHref =
                   row.status === TrackingStatus.WAIT_SERVICE_FEE
                     ? `/payments/${row.bookingId}`
-                    : "/bookings";
+                    : row.status === TrackingStatus.WAIT_FULL_PAYMENT
+                      ? `/payments/ticket/${row.bookingId}`
+                      : "/bookings";
 
                 return (
                   <Card
@@ -420,12 +422,14 @@ export default function TrackingPage() {
                   const needsPayment =
                     row.status === TrackingStatus.WAIT_FULL_PAYMENT ||
                     row.status === TrackingStatus.WAIT_SERVICE_FEE;
-                  // Service fee (ค่ากด) has its own per-booking Omise page;
-                  // the ฝากจ่าย ticket flow still goes through /bookings.
+                  // Service fee (ค่ากด) and ฝากจ่าย ticket payment each have
+                  // their own per-booking Omise page.
                   const payHref =
                     row.status === TrackingStatus.WAIT_SERVICE_FEE
                       ? `/payments/${row.bookingId}`
-                      : "/bookings";
+                      : row.status === TrackingStatus.WAIT_FULL_PAYMENT
+                        ? `/payments/ticket/${row.bookingId}`
+                        : "/bookings";
                   return (
                     <div
                       key={row.bookingId}
@@ -524,11 +528,14 @@ export default function TrackingPage() {
                       const needsPayment =
                         row.status === TrackingStatus.WAIT_FULL_PAYMENT ||
                         row.status === TrackingStatus.WAIT_SERVICE_FEE;
-                      // Service fee (ค่ากด) → dedicated Omise page; ฝากจ่าย → /bookings.
+                      // Service fee (ค่ากด) → dedicated Omise page;
+                      // ฝากจ่าย ticket payment → its own Omise page.
                       const payHref =
                         row.status === TrackingStatus.WAIT_SERVICE_FEE
                           ? `/payments/${row.bookingId}`
-                          : "/bookings";
+                          : row.status === TrackingStatus.WAIT_FULL_PAYMENT
+                            ? `/payments/ticket/${row.bookingId}`
+                            : "/bookings";
                       return (
                         <TableRow
                           key={row.bookingId}

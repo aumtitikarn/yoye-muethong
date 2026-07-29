@@ -7,15 +7,15 @@ import { TrackingStatus } from "./types/enum";
  * customer sees a coarse, friendly status; the admin keeps the detail.
  */
 const STATUS_MAP: Record<BookingStatus, TrackingStatus> = {
-  WAITING_QUEUE_APPROVAL: TrackingStatus.BOOKING_CONFIRMED,
+  WAITING_QUEUE_APPROVAL: TrackingStatus.WAIT_QUEUE_APPROVAL,
   WAITING_DEPOSIT_TRANSFER: TrackingStatus.WAIT_FULL_PAYMENT,
   WAITING_DEPOSIT_VERIFY: TrackingStatus.BOOKING_CONFIRMED,
   QUEUE_BOOKED: TrackingStatus.BOOKING_CONFIRMED,
   WAITING_BOOKING_INFO: TrackingStatus.BOOKING_CONFIRMED,
   TRANSFERRING_TICKET: TrackingStatus.WAIT_FULL_PAYMENT,
   CONFIRMING_TICKET: TrackingStatus.PREPARE_PRESS,
-  WAITING_ADMIN_CONFIRM: TrackingStatus.PREPARE_PRESS,
-  READY_TO_BOOK: TrackingStatus.PREPARE_PRESS,
+  WAITING_ADMIN_CONFIRM: TrackingStatus.WAIT_ADMIN_CONFIRM,
+  READY_TO_BOOK: TrackingStatus.READY_TO_PRESS,
   BOOKING_IN_PROGRESS: TrackingStatus.PRESSING,
   PARTIALLY_BOOKED: TrackingStatus.PARTIAL_TICKETS,
   FULLY_BOOKED: TrackingStatus.COMPLETE_TICKETS,
