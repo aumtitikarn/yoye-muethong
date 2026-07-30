@@ -16,6 +16,138 @@ interface RefundInfoBody {
   amount?: number;
 }
 
+export interface RefundAccountDTO {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  amount: number;
+  status: string;
+  requestedAt: string;
+}
+
+export interface RefundTransactionDTO {
+  id: number;
+  amount: number;
+  paidAt: string;
+  payoutSlipUrl: string | null;
+  status: string;
+}
+
+export interface RefundSummaryDTO {
+  /** Admin-set refund total (฿). */
+  refundAmount: number;
+  /** Coarse customer-facing status. */
+  trackingStatus: string;
+  /** True while the customer may still submit / edit bank info. */
+  editable: boolean;
+  /** Latest bank info the customer submitted, if any. */
+  account: RefundAccountDTO | null;
+  /** Payouts the shop has already made to the customer (paidAt set). */
+  transactions: RefundTransactionDTO[];
+}
+
+// GET /api/v1/public/bookings/:code/refund
+// Refund summary for the caller's own booking: admin-set amount, the latest
+// bank info submitted, and any payouts the shop has already made. Requires a
+// LINE session + ownership. All money fields are read from the DB — the client
+// never supplies them.
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ code: string }> }
+) {
+  const user = verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+  if (!user) {
+    return NextResponse.json(
+      { message: "กรุณาเข้าสู่ระบบด้วย LINE ก่อน" },
+      { status: 401 }
+    );
+  }
+
+  const { code } = await params;
+  const bookingCode = decodeURIComponent(code).trim();
+  if (!bookingCode) {
+    return NextResponse.json({ message: GENERIC_NOT_FOUND }, { status: 404 });
+  }
+
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { bookingCode },
+      select: {
+        id: true,
+        status: true,
+        refundAmount: true,
+        deletedAt: true,
+        customer: { select: { lineUserId: true } },
+        refundRequests: {
+          orderBy: { requestedAt: "desc" },
+          select: {
+            id: true,
+            bankName: true,
+            accountNumber: true,
+            accountHolder: true,
+            amount: true,
+            status: true,
+            payoutSlipUrl: true,
+            paidAt: true,
+            requestedAt: true,
+          },
+        },
+      },
+    });
+    if (
+      !booking ||
+      booking.deletedAt ||
+      booking.customer.lineUserId !== user.sub
+    ) {
+      return NextResponse.json({ message: GENERIC_NOT_FOUND }, { status: 404 });
+    }
+
+    const trackingStatus = toTrackingStatus(booking.status);
+    const latest = booking.refundRequests[0] ?? null;
+    // The customer may still edit while awaiting a refund and nothing has been
+    // paid out yet.
+    const editable =
+      trackingStatus === TrackingStatus.WAIT_REFUND &&
+      (!latest || latest.status !== "PAID");
+
+    const account: RefundAccountDTO | null = latest
+      ? {
+          bankName: latest.bankName,
+          accountNumber: latest.accountNumber,
+          accountHolder: latest.accountHolder,
+          amount: latest.amount,
+          status: latest.status,
+          requestedAt: latest.requestedAt.toISOString(),
+        }
+      : null;
+
+    const transactions: RefundTransactionDTO[] = booking.refundRequests
+      .filter((r) => r.paidAt)
+      .map((r) => ({
+        id: r.id,
+        amount: r.amount,
+        paidAt: (r.paidAt as Date).toISOString(),
+        payoutSlipUrl: r.payoutSlipUrl,
+        status: r.status,
+      }));
+
+    const data: RefundSummaryDTO = {
+      refundAmount: booking.refundAmount,
+      trackingStatus,
+      editable,
+      account,
+      transactions,
+    };
+    return NextResponse.json({ data });
+  } catch (err) {
+    console.error("public/bookings refund summary error:", err);
+    return NextResponse.json(
+      { message: "ไม่สามารถโหลดข้อมูลคืนเงินได้" },
+      { status: 500 }
+    );
+  }
+}
+
 // POST /api/v1/public/bookings/:code/refund
 // Save the caller's bank details for a booking that is waiting for a refund.
 // Requires a LINE session + ownership. Idempotent: updates the existing refund

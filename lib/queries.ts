@@ -5,6 +5,7 @@ import {
   fetchBookingDetail,
   fetchServiceFeeInfo,
   fetchTicketFeeInfo,
+  fetchRefundInfo,
   saveDeepInfoResponses,
   submitRefundInfo,
   PaymentAuthError,
@@ -83,6 +84,21 @@ export function useTicketFeeInfoQuery(bookingCode: string | undefined) {
   });
 }
 
+/**
+ * Server state: the refund summary (amount, bank info, payout history) for a
+ * single booking (owner-only). A 401 is surfaced as PaymentAuthError and not
+ * retried so the refund step can prompt for LINE login.
+ */
+export function useRefundInfoQuery(bookingCode: string | undefined) {
+  return useQuery({
+    queryKey: ["refund-info", bookingCode],
+    queryFn: ({ signal }) => fetchRefundInfo(bookingCode as string, signal),
+    enabled: Boolean(bookingCode),
+    retry: (failureCount, error) =>
+      !(error instanceof PaymentAuthError) && failureCount < 1,
+  });
+}
+
 /** Save the booking's extra-field answers (deep_info_responses). */
 export function useSaveDeepInfoMutation(bookingCode: string | undefined) {
   const queryClient = useQueryClient();
@@ -105,6 +121,7 @@ export function useSubmitRefundMutation(bookingCode: string | undefined) {
       submitRefundInfo(bookingCode as string, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["refund-info", bookingCode] });
     },
   });
 }

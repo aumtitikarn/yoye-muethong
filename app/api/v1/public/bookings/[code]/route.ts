@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
+import { toTrackingStatus } from "@/app/tracking/status-map";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,12 @@ export interface BookingDetailDTO {
   serviceFee: number;
   /** Event fee per entry (ค่ากด/รายชื่อ) — used for form totals. */
   feePerEntry: number;
+  /** Deposit already paid (มัดจำ) — set on the Omise deposit charge. */
+  depositPaid: number;
+  /** Admin-set refund total (฿) once the booking is awaiting a refund. */
+  refundAmount: number;
+  /** Coarse customer-facing status (drives the payment/refund steps). */
+  trackingStatus: string;
   note?: string;
   zones: ZoneOptionDTO[];
   fields: DeepInfoFieldDTO[];
@@ -58,6 +65,9 @@ const bookingSelect = {
   bookingCode: true,
   netCardPrice: true,
   serviceFee: true,
+  depositPaid: true,
+  refundAmount: true,
+  status: true,
   notes: true,
   deletedAt: true,
   customer: { select: { lineUserId: true } },
@@ -147,6 +157,9 @@ function shape(b: BookingRow): BookingDetailDTO {
     total: b.netCardPrice,
     serviceFee: b.serviceFee,
     feePerEntry: b.event.feePerEntry ? Number(b.event.feePerEntry) : 0,
+    depositPaid: b.depositPaid,
+    refundAmount: b.refundAmount,
+    trackingStatus: toTrackingStatus(b.status),
     note: b.notes ?? undefined,
     zones,
     fields: b.event.deepInfoFields.map((f) => ({

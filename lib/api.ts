@@ -373,6 +373,12 @@ export interface BookingDetailDTO {
   total: number;
   serviceFee: number;
   feePerEntry: number;
+  /** Deposit already paid (มัดจำ). */
+  depositPaid: number;
+  /** Admin-set refund total (฿) once awaiting a refund. */
+  refundAmount: number;
+  /** Coarse customer-facing status. */
+  trackingStatus: string;
   note?: string;
   zones: ZoneOptionDTO[];
   fields: DeepInfoFieldDTO[];
@@ -458,6 +464,58 @@ export async function submitRefundInfo(
     } | null;
     throw new Error(json?.message ?? `บันทึกข้อมูลคืนเงินไม่สำเร็จ (${res.status})`);
   }
+}
+
+// ── Refund summary (bank info + payout history) ────────────────────
+
+export interface RefundAccountDTO {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  amount: number;
+  status: string;
+  requestedAt: string;
+}
+
+export interface RefundTransactionDTO {
+  id: number;
+  amount: number;
+  paidAt: string;
+  payoutSlipUrl: string | null;
+  status: string;
+}
+
+export interface RefundSummaryDTO {
+  refundAmount: number;
+  trackingStatus: string;
+  editable: boolean;
+  account: RefundAccountDTO | null;
+  transactions: RefundTransactionDTO[];
+}
+
+/**
+ * Fetch the refund summary for the caller's own booking: admin-set amount, the
+ * latest bank info submitted, and any payouts the shop has already made.
+ * Throws PaymentAuthError on 401 so the caller can prompt for LINE login.
+ */
+export async function fetchRefundInfo(
+  bookingCode: string,
+  signal?: AbortSignal
+): Promise<RefundSummaryDTO> {
+  const res = await fetch(
+    `${API_BASE_URL}/public/bookings/${encodeURIComponent(bookingCode)}/refund`,
+    { signal, cache: "no-store" }
+  );
+  const json = (await res.json().catch(() => null)) as
+    | { data?: RefundSummaryDTO; message?: string }
+    | null;
+  if (res.status === 401) {
+    throw new PaymentAuthError(json?.message ?? "กรุณาเข้าสู่ระบบด้วย LINE ก่อน");
+  }
+  if (!res.ok || !json?.data) {
+    throw new Error(json?.message ?? `โหลดข้อมูลคืนเงินไม่สำเร็จ (${res.status})`);
+  }
+  return json.data;
 }
 
 export interface LinkLineInput {

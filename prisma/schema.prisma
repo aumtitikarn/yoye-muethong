@@ -145,16 +145,33 @@ model TicketPaymentRequest {
   @@map("ticket_payment_requests")
 }
 
+// Lifecycle of a refund request. Owned/migrated by yoye-admin — declared here
+// only so the storefront can read the current status. Values mirror the admin
+// enum exactly (the underlying Postgres enum is shared).
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
 // Customer-submitted refund bank info (status/category use the DB defaults
 // REQUESTED / MIXED — the storefront only writes the bank fields + amount).
+// The read-only columns below (status/paidAt/payoutSlipUrl/processedAt) are set
+// by yoye-admin when it pays the refund out; the storefront surfaces them in the
+// booking's refund step but never writes them.
 model RefundRequest {
-  id            Int      @id @default(autoincrement())
+  id            Int          @id @default(autoincrement())
   bookingId     Int
   bankName      String
   accountNumber String
   accountHolder String
   amount        Float
-  requestedAt   DateTime @default(now())
+  status        RefundStatus @default(REQUESTED)
+  payoutSlipUrl String?
+  paidAt        DateTime?
+  processedAt   DateTime?
+  requestedAt   DateTime     @default(now())
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
