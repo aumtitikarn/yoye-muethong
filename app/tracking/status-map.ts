@@ -11,7 +11,8 @@ const STATUS_MAP: Record<BookingStatus, TrackingStatus> = {
   WAITING_DEPOSIT_TRANSFER: TrackingStatus.WAIT_FULL_PAYMENT,
   WAITING_DEPOSIT_VERIFY: TrackingStatus.BOOKING_CONFIRMED,
   QUEUE_BOOKED: TrackingStatus.BOOKING_CONFIRMED,
-  WAITING_BOOKING_INFO: TrackingStatus.BOOKING_CONFIRMED,
+  // แอดมินขอข้อมูลเพิ่ม → หน้าติดตามต้องโชว์ปุ่มกรอกข้อมูลเพิ่มเติม
+  WAITING_BOOKING_INFO: TrackingStatus.WAIT_BOOKING_INFO,
   TRANSFERRING_TICKET: TrackingStatus.WAIT_FULL_PAYMENT,
   CONFIRMING_TICKET: TrackingStatus.PREPARE_PRESS,
   WAITING_ADMIN_CONFIRM: TrackingStatus.WAIT_ADMIN_CONFIRM,
@@ -30,7 +31,9 @@ const STATUS_MAP: Record<BookingStatus, TrackingStatus> = {
   FORM_HAS_NAME: TrackingStatus.WAIT_SERVICE_FEE,
   FORM_NO_NAME: TrackingStatus.WAIT_REFUND,
   WAITING_SUMMARY: TrackingStatus.PRESSING,
-  WAITING_SERVICE_FEE: TrackingStatus.WAIT_SERVICE_FEE,
+  // แอดมินยังไม่ได้สร้างบิล → ลูกค้ายังจ่ายไม่ได้ (ปุ่มชำระเงินจะขึ้นตอน
+  // WAITING_SERVICE_FEE_VERIFY คือหลังบิลถูกสร้างแล้ว)
+  WAITING_SERVICE_FEE: TrackingStatus.WAIT_ADMIN_SUMMARY,
   WAITING_SERVICE_FEE_VERIFY: TrackingStatus.WAIT_SERVICE_FEE,
   SERVICE_FEE_PAID: TrackingStatus.PREPARE_PRESS,
   DEPOSIT_PENDING: TrackingStatus.BOOKING_CONFIRMED,

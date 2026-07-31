@@ -422,6 +422,10 @@ export default function TrackingPage() {
                   const needsPayment =
                     row.status === TrackingStatus.WAIT_FULL_PAYMENT ||
                     row.status === TrackingStatus.WAIT_SERVICE_FEE;
+                  const canFillDeepInfo =
+                    (row.status === TrackingStatus.BOOKING_CONFIRMED ||
+                      row.status === TrackingStatus.WAIT_BOOKING_INFO) &&
+                    !row.haveDeepInfo;
                   // Service fee (ค่ากด) and ฝากจ่าย ticket payment each have
                   // their own per-booking Omise page.
                   const payHref =
@@ -464,20 +468,19 @@ export default function TrackingPage() {
                             </p>
                           )}
                       </div>
-                      {row.status === TrackingStatus.BOOKING_CONFIRMED &&
-                        !row.haveDeepInfo && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="mt-3 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
-                            asChild
-                          >
-                            <Link href={`/bookings/${row.bookingId}?edit=1`}>
-                              <ClipboardPen className="size-3.5" />
-                              กรอกข้อมูลการจองเพิ่มเติม
-                            </Link>
-                          </Button>
-                        )}
+                      {canFillDeepInfo && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mt-3 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
+                          asChild
+                        >
+                          <Link href={`/bookings/${row.bookingId}?edit=1`}>
+                            <ClipboardPen className="size-3.5" />
+                            กรอกข้อมูลการจองเพิ่มเติม
+                          </Link>
+                        </Button>
+                      )}
                       {row.status === TrackingStatus.WAIT_REFUND && (
                         <Button
                           size="sm"
@@ -528,6 +531,10 @@ export default function TrackingPage() {
                       const needsPayment =
                         row.status === TrackingStatus.WAIT_FULL_PAYMENT ||
                         row.status === TrackingStatus.WAIT_SERVICE_FEE;
+                      const canFillDeepInfo =
+                        (row.status === TrackingStatus.BOOKING_CONFIRMED ||
+                          row.status === TrackingStatus.WAIT_BOOKING_INFO) &&
+                        !row.haveDeepInfo;
                       // Service fee (ค่ากด) → dedicated Omise page;
                       // ฝากจ่าย ticket payment → its own Omise page.
                       const payHref =
@@ -569,21 +576,19 @@ export default function TrackingPage() {
                               className="flex items-center justify-end gap-2"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {row.status ===
-                                TrackingStatus.BOOKING_CONFIRMED &&
-                                !row.haveDeepInfo && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="gap-1.5 text-xs btn-glow-border rounded-xl font-semibold text-foreground"
-                                    asChild
-                                  >
-                                    <Link href={`/bookings/${row.bookingId}?edit=1`}>
-                                      <ClipboardPen className="size-3.5" />
-                                      กรอกข้อมูลเพิ่มเติม
-                                    </Link>
-                                  </Button>
-                                )}
+                              {canFillDeepInfo && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="gap-1.5 text-xs btn-glow-border rounded-xl font-semibold text-foreground"
+                                  asChild
+                                >
+                                  <Link href={`/bookings/${row.bookingId}?edit=1`}>
+                                    <ClipboardPen className="size-3.5" />
+                                    กรอกข้อมูลเพิ่มเติม
+                                  </Link>
+                                </Button>
+                              )}
                               {row.status === TrackingStatus.WAIT_REFUND && (
                                 <Button
                                   size="sm"

@@ -3,6 +3,7 @@
 export enum TrackingStatus {
   WAIT_QUEUE_APPROVAL = "รอแอดมินอนุมัติคิว",
   BOOKING_CONFIRMED = "จองคิวสำเร็จ",
+  WAIT_BOOKING_INFO = "รอกรอกข้อมูลการจอง",
   WAIT_FULL_PAYMENT = "รอชำระค่าบัตร (กรณีฝากจ่าย)",
   WAIT_ADMIN_CONFIRM = "รอแอดมินยืนยันข้อมูล",
   READY_TO_PRESS = "พร้อมกดบัตร",
@@ -11,6 +12,7 @@ export enum TrackingStatus {
   PARTIAL_TICKETS = "ได้บัตรแล้ว (บางส่วน)",
   COMPLETE_TICKETS = "กดบัตรสำเร็จ",
   FAILED = "ไม่ได้รับบัตร",
+  WAIT_ADMIN_SUMMARY = "รอแอดมินสรุปยอด",
   WAIT_SERVICE_FEE = "รอชำระค่ากดบัตร",
   WAIT_REFUND = "รอคืนเงิน",
   REFUNDED = "คืนเงินเรียบร้อย",
@@ -31,6 +33,10 @@ export const STATUS_METADATA: Record<TrackingStatus, StatusMetadata> = {
   [TrackingStatus.BOOKING_CONFIRMED]: {
     description: "ลูกค้าอุ่นใจได้ว่ามีชื่ออยู่ในระบบแล้ว",
     colorClass: "bg-emerald-100 text-emerald-800",
+  },
+  [TrackingStatus.WAIT_BOOKING_INFO]: {
+    description: "กรุณากรอกข้อมูลเพิ่มเติมของการจองให้ครบถ้วน เพื่อให้ทีมงานดำเนินการต่อได้",
+    colorClass: "bg-amber-100 text-amber-900",
   },
   [TrackingStatus.WAIT_FULL_PAYMENT]: {
     description:
@@ -64,6 +70,10 @@ export const STATUS_METADATA: Record<TrackingStatus, StatusMetadata> = {
   [TrackingStatus.FAILED]: {
     description: "ทีมงานกดให้ไม่ได้",
     colorClass: "bg-rose-100 text-rose-700",
+  },
+  [TrackingStatus.WAIT_ADMIN_SUMMARY]: {
+    description: "แอดมินกำลังสรุปยอดค่ากดบัตร รอบิลจากทางร้านสักครู่นะคะ",
+    colorClass: "bg-amber-100 text-amber-900",
   },
   [TrackingStatus.WAIT_SERVICE_FEE]: {
     description: "รอชำระค่ากดบัตร",
