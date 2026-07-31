@@ -661,12 +661,25 @@ export function StepDetails({
                 {ticketsToCharge} {unitWord}
               </span>
             </div>
-            <div className="flex items-start justify-between gap-3 border-t border-border/60 pt-2">
-              <span className="text-muted-foreground">{totalLabel}</span>
-              <span className="text-right text-base font-black text-accent">
-                {baht(displayTotal)}
-              </span>
-            </div>
+            {extraFields.length > 0 && (
+              <div className="space-y-2 border-t border-border/60 pt-2">
+                <p className="font-semibold">ข้อมูลเพิ่มเติม</p>
+                {extraFields.map((field) => {
+                  const value = (extraValues[field.id] ?? "").trim();
+                  return (
+                    <div
+                      key={field.id}
+                      className="flex items-start justify-between gap-3"
+                    >
+                      <span className="text-muted-foreground">{field.label}</span>
+                      <span className="min-w-0 break-words text-right font-semibold">
+                        {value || "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
