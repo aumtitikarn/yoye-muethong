@@ -36,12 +36,24 @@ COPY . .
 RUN DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public" \
     pnpm exec prisma generate
 
-# `.env` is mounted as a build secret (never written into a layer). Next.js
-# reads it while building, which is how the NEXT_PUBLIC_* values get inlined
-# into the client bundle, and how any DB-backed page can prerender.
+# Build-time configuration. NEXT_PUBLIC_* is inlined into the client bundle
+# here and cannot be changed at runtime, so rebuild the image when any of it
+# changes. DATABASE_URL is needed because /reviews and
+# /api/v1/public/reviews/stats prerender from the database.
+# These stay in the builder stage only — they are not part of the final image.
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_URL
+ARG NEXT_PUBLIC_FILES_URL_BASE
+ARG NEXT_PUBLIC_OMISE_PUBLIC_KEY
+ARG DATABASE_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_URL=$NEXT_PUBLIC_URL \
+    NEXT_PUBLIC_FILES_URL_BASE=$NEXT_PUBLIC_FILES_URL_BASE \
+    NEXT_PUBLIC_OMISE_PUBLIC_KEY=$NEXT_PUBLIC_OMISE_PUBLIC_KEY \
+    DATABASE_URL=$DATABASE_URL
+
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN --mount=type=secret,id=dotenv,target=/app/.env,required=false \
-    pnpm build
+RUN pnpm build
 
 # ---------------------------------------------------------------------------
 # runner — minimal image containing only the standalone server output

@@ -1,27 +1,42 @@
 services:
-  web:
+  booking:
     build:
       context: .
-      dockerfile: Dockerfile
-      # `.env` is exposed to the build (not baked into a layer) so Next.js can
-      # inline the NEXT_PUBLIC_* values into the client bundle.
-      secrets:
-        - dotenv
-    image: yoye-muethong:latest
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+        - NEXT_PUBLIC_URL=${NEXT_PUBLIC_URL:-https://yoyemuethong-dev.yoyemuethong.com}
+        - NEXT_PUBLIC_FILES_URL_BASE=${NEXT_PUBLIC_FILES_URL_BASE}
+        - NEXT_PUBLIC_OMISE_PUBLIC_KEY=${NEXT_PUBLIC_OMISE_PUBLIC_KEY}
+        - DATABASE_URL=${DATABASE_URL}
     container_name: yoye-muethong
-    restart: unless-stopped
-    # Runtime configuration: DATABASE_URL, JWT_SECRET, LINE_*, OMISE_* …
-    # The database itself is external (see DATABASE_URL), so there is no db
-    # service here.
-    env_file:
-      - .env
     environment:
-      NODE_ENV: production
-      PORT: "3000"
-      HOSTNAME: "0.0.0.0"
-    ports:
-      - "${PORT:-3000}:3000"
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+      - NEXT_PUBLIC_URL=${NEXT_PUBLIC_URL:-https://yoyemuethong-dev.yoyemuethong.com}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - FILES_PUBLIC_URL_BASE=${FILES_PUBLIC_URL_BASE}
+      - NEXT_PUBLIC_FILES_URL_BASE=${NEXT_PUBLIC_FILES_URL_BASE}
+      - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
+      - LINE_LOGIN_CHANNEL_ID=${LINE_LOGIN_CHANNEL_ID}
+      - LINE_LOGIN_CHANNEL_SECRET=${LINE_LOGIN_CHANNEL_SECRET}
+      - LINE_LOGIN_REDIRECT_URI=${LINE_LOGIN_REDIRECT_URI}
+      - OMISE_SECRET_KEY=${OMISE_SECRET_KEY}
+      - OMISE_API_VERSION=${OMISE_API_VERSION:-}
+      - NEXT_PUBLIC_OMISE_PUBLIC_KEY=${NEXT_PUBLIC_OMISE_PUBLIC_KEY}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.booking.rule=Host(`yoyemuethong-dev.yoyemuethong.com`)"
+      - "traefik.http.routers.booking.entrypoints=websecure"
+      - "traefik.http.routers.booking.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.booking.priority=1"
+      - "traefik.http.services.booking.loadbalancer.server.port=3000"
+    restart: always
+    networks:
+      - yoye-link
 
-secrets:
-  dotenv:
-    file: .env
+networks:
+  yoye-link:
+    external: true
