@@ -237,7 +237,11 @@ export default function Home() {
           </div>
         </DialogContent>
       </Dialog>
-      <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-40">
+      {/* Sits clear of the mobile bottom navbar (md:hidden, ~65px tall). At
+          bottom-4 more than half the button was hidden behind it. env() keeps
+          it clear of the iPhone home indicator too. Desktop has no bottom nav,
+          so md: goes back to sitting near the corner. */}
+      <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 md:bottom-8 md:right-8 z-40">
         <div className="absolute inset-0 blur-xl bg-gradient-to-r from-primary/40 via-orange-400/50 to-primary/40 rounded-full opacity-60 animate-pulse" />
         <Button
           className="relative h-14 w-14 md:h-20 md:w-20 rounded-full border-2 md:border-3 bg-amber-100/90 hover:bg-amber-200 text-amber-600 shadow-2xl flex items-center justify-center animate-bounce hover:animate-none"
