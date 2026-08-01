@@ -43,4 +43,3 @@ networks:
     external: true
     # Traefik's network, created by the traefik stack (same value as yoye-admin)
     name: traefik-4yt9_host
-    name: traefik-4yt9_host
