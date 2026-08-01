@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BookingStatus } from "@prisma/client";
+import { BookingStatus, TicketPaymentMode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { getSystemActorId } from "@/lib/system-actor";
@@ -29,6 +29,11 @@ export interface DeepInfoResponseItem {
 
 interface SaveDeepInfoBody {
   responses?: DeepInfoResponseItem[];
+  /**
+   * วิธีชำระค่าบัตรที่ลูกค้าเลือก (งานประเภทบัตรเท่านั้น). ส่งมาพร้อมข้อมูล
+   * เชิงลึกเพราะอยู่ในหน้าจอเดียวกันและลูกค้ากดยืนยันครั้งเดียว.
+   */
+  ticketPaymentMode?: string;
 }
 
 // POST /api/v1/public/bookings/:code/deep-info
@@ -64,6 +69,19 @@ export async function POST(
   if (!responses) {
     return NextResponse.json({ message: "ข้อมูลไม่ถูกต้อง" }, { status: 400 });
   }
+
+  const rawMode = body.ticketPaymentMode;
+  if (
+    rawMode !== undefined &&
+    rawMode !== TicketPaymentMode.STORE_PAID &&
+    rawMode !== TicketPaymentMode.SELF_PAID
+  ) {
+    return NextResponse.json(
+      { message: "วิธีชำระค่าบัตรไม่ถูกต้อง" },
+      { status: 400 }
+    );
+  }
+  const ticketPaymentMode = rawMode as TicketPaymentMode | undefined;
 
   // Normalise + validate shape up front.
   type NormalisedItem = { fieldId: number; entryIndex: number; value: string };
@@ -108,7 +126,9 @@ export async function POST(
         deletedAt: true,
         customer: { select: { lineUserId: true } },
         bookingItems: { select: { quantity: true } },
-        event: { select: { _count: { select: { deepInfoFields: true } } } },
+        event: {
+          select: { type: true, _count: { select: { deepInfoFields: true } } },
+        },
       },
     });
     if (
@@ -168,6 +188,17 @@ export async function POST(
     const systemActorId = await getSystemActorId();
 
     await prisma.$transaction(async (tx) => {
+      // Record how the customer wants to pay for the tickets. Without this the
+      // admin has no way to know they chose ฝากร้าน, so nobody sends the
+      // "แจ้งยอดโอนค่าบัตร" notice and the customer is left with no next step.
+      // Form events have no ticket cost, so the choice does not apply to them.
+      if (ticketPaymentMode && booking.event.type !== "FORM") {
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { ticketPaymentMode },
+        });
+      }
+
       const existing = await tx.deepInfoResponse.findMany({
         where: { bookingId, fieldId: { in: fieldIds } },
         select: { id: true, fieldId: true, entryIndex: true, value: true },

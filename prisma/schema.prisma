@@ -65,6 +65,13 @@ enum BookingStatus {
   CLOSED_REFUNDED
 }
 
+/// ลูกค้าเลือกว่าจะจ่ายค่าบัตรยังไง (เฉพาะงานประเภทบัตร)
+/// STORE_PAID = ฝากร้านจ่ายก่อน — แอดมินต้องแจ้งยอดโอนค่าบัตรให้ลูกค้าต่อ
+enum TicketPaymentMode {
+  STORE_PAID
+  SELF_PAID
+}
+
 enum PaymentStatus {
   UNPAID
   PARTIALLY_PAID
@@ -96,6 +103,8 @@ model Booking {
   nameCustomer  String?
   status        BookingStatus @default(QUEUE_BOOKED)
   paymentStatus PaymentStatus @default(UNPAID)
+  /// ลูกค้าเลือกวิธีชำระค่าบัตรตอนกรอกข้อมูลจอง — null = ยังไม่ได้เลือก / งานฟอร์ม
+  ticketPaymentMode TicketPaymentMode?
   netCardPrice  Float         @default(0)
   serviceFee    Float         @default(0)
   shippingFee   Float         @default(0)

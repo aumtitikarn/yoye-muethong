@@ -443,6 +443,8 @@ export interface BookingDetailDTO {
   entries: DeepInfoEntryDTO[];
   /** True while the customer may still cancel individual entries. */
   canCancelEntries: boolean;
+  /** วิธีชำระค่าบัตรที่ลูกค้าเลือกไว้ — null = ยังไม่ได้เลือก / งานฟอร์ม */
+  ticketPaymentMode: TicketPaymentMode | null;
 }
 
 /** Fetch full detail of the caller's own booking (incl. admin extra fields). */
@@ -477,16 +479,25 @@ export interface DeepInfoResponseInput {
  * for a booking. Requires a LINE session + ownership (enforced server-side).
  * Throws on failure so the caller can surface the message.
  */
+/** วิธีชำระค่าบัตรที่ลูกค้าเลือก (งานประเภทบัตรเท่านั้น). */
+export type TicketPaymentMode = "STORE_PAID" | "SELF_PAID";
+
+export interface SaveDeepInfoInput {
+  responses: DeepInfoResponseInput[];
+  /** ส่งเฉพาะงานประเภทบัตร — ฟอร์มไม่มีค่าบัตรให้เลือกวิธีจ่าย */
+  ticketPaymentMode?: TicketPaymentMode;
+}
+
 export async function saveDeepInfoResponses(
   bookingCode: string,
-  responses: DeepInfoResponseInput[]
+  input: SaveDeepInfoInput
 ): Promise<void> {
   const res = await fetch(
     `${API_BASE_URL}/public/bookings/${encodeURIComponent(bookingCode)}/deep-info`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ responses }),
+      body: JSON.stringify(input),
     }
   );
   if (!res.ok) {

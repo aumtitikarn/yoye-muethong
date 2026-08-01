@@ -13,7 +13,7 @@ import {
   saveDeepInfoResponses,
   submitRefundInfo,
   PaymentAuthError,
-  type DeepInfoResponseInput,
+  type SaveDeepInfoInput,
   type RefundInfoInput,
 } from "./api";
 
@@ -107,12 +107,14 @@ export function useRefundInfoQuery(bookingCode: string | undefined) {
 export function useSaveDeepInfoMutation(bookingCode: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (responses: DeepInfoResponseInput[]) =>
-      saveDeepInfoResponses(bookingCode as string, responses),
+    mutationFn: (input: SaveDeepInfoInput) =>
+      saveDeepInfoResponses(bookingCode as string, input),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["booking-detail", bookingCode],
       });
+      // Saving can advance the booking status, so the tracking list is stale too.
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
     },
   });
 }

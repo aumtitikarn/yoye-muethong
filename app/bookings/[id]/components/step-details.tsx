@@ -42,7 +42,7 @@ import {
 import type { BookingDetailDTO } from "@/lib/api";
 import { CautionNote, InfoRow, SectionHeader, StepIntro, baht } from "./wizard-blocks";
 
-type PaymentMethod = "store_pay" | "self_pay";
+type PaymentMethod = "STORE_PAID" | "SELF_PAID";
 
 export function StepDetails({
   detail,
@@ -57,7 +57,7 @@ export function StepDetails({
   const isFormType = detail.eventTypes === "form";
 
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("store_pay");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("STORE_PAID");
   // Answers keyed by "entryIndex:fieldId" — one set per booked name/ticket.
   const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [isEditingZone, setIsEditingZone] = useState(false);
@@ -73,6 +73,7 @@ export function StepDetails({
     setSelectedZoneId(
       detail.zones.find((z) => z.name === detail.zone)?.id ?? null,
     );
+    if (detail.ticketPaymentMode) setPaymentMethod(detail.ticketPaymentMode);
     setExtraValues(
       Object.fromEntries(
         detail.entries.flatMap((entry) =>
@@ -262,20 +263,30 @@ export function StepDetails({
 
   const handleSaveDeepInfo = () => {
     saveDeepInfo.mutate(
-      entries.flatMap((entry) =>
-        extraFields.map((f) => ({
-          fieldId: f.id,
-          entryIndex: entry.entryIndex,
-          value: (extraValues[answerKey(entry.entryIndex, f.id)] ?? "").trim(),
-        })),
-      ),
+      {
+        responses: entries.flatMap((entry) =>
+          extraFields.map((f) => ({
+            fieldId: f.id,
+            entryIndex: entry.entryIndex,
+            value: (extraValues[answerKey(entry.entryIndex, f.id)] ?? "").trim(),
+          })),
+        ),
+        // Form events have no ticket cost, so no payment method to record.
+        ticketPaymentMode: isFormType ? undefined : paymentMethod,
+      },
       { onSuccess: () => router.push("/tracking") },
     );
   };
 
   const handleConfirm = () => {
     setConfirmOpen(false);
-    if (extraFields.length > 0 && !hasSavedDeepInfo) {
+    // Save when there is anything new: unsaved answers, OR a payment method the
+    // server does not have yet. Without the second check, a ticket event with no
+    // deep-info fields would never record the customer's ฝากร้าน / จ่ายเอง choice.
+    const hasUnsavedAnswers = extraFields.length > 0 && !hasSavedDeepInfo;
+    const hasUnsavedPaymentMode =
+      !isFormType && detail.ticketPaymentMode !== paymentMethod;
+    if (hasUnsavedAnswers || hasUnsavedPaymentMode) {
       handleSaveDeepInfo();
     } else {
       router.push("/tracking");
@@ -511,15 +522,15 @@ export function StepDetails({
             className="grid grid-cols-1 gap-3 sm:grid-cols-2"
           >
             <label
-              htmlFor="store_pay"
+              htmlFor="STORE_PAID"
               className={cn(
                 "flex cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 transition-all duration-200",
-                paymentMethod === "store_pay"
+                paymentMethod === "STORE_PAID"
                   ? "border-primary bg-primary/5 shadow-md"
                   : "border-border/60 hover:border-primary/40",
               )}
             >
-              <RadioGroupItem value="store_pay" id="store_pay" />
+              <RadioGroupItem value="STORE_PAID" id="STORE_PAID" />
               <div>
                 <p className="text-sm font-semibold">ฝากร้านจ่าย</p>
                 <p className="text-xs text-muted-foreground">
@@ -528,15 +539,15 @@ export function StepDetails({
               </div>
             </label>
             <label
-              htmlFor="self_pay"
+              htmlFor="SELF_PAID"
               className={cn(
                 "flex cursor-pointer items-center gap-3 rounded-2xl border-2 p-4 transition-all duration-200",
-                paymentMethod === "self_pay"
+                paymentMethod === "SELF_PAID"
                   ? "border-primary bg-primary/5 shadow-md"
                   : "border-border/60 hover:border-primary/40",
               )}
             >
-              <RadioGroupItem value="self_pay" id="self_pay" />
+              <RadioGroupItem value="SELF_PAID" id="SELF_PAID" />
               <div>
                 <p className="text-sm font-semibold">จ่ายเอง</p>
                 <p className="text-xs text-muted-foreground">
@@ -545,6 +556,35 @@ export function StepDetails({
               </div>
             </label>
           </RadioGroup>
+
+          {/* Tell the customer what actually happens next. Choosing ฝากร้าน used
+              to be a dead end — the amount is set by an admin afterwards, so
+              there is nothing to pay yet at this point. */}
+          {paymentMethod === "STORE_PAID" ? (
+            <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 text-sm">
+              <p className="font-semibold text-foreground">
+                ขั้นตอนถัดไป — ฝากร้านจ่าย
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                หลังยืนยันข้อมูล ทางร้านจะสรุปยอดค่าบัตรแล้วแจ้งให้ทาง LINE
+                เมื่อได้รับยอดแล้ว สถานะจะเปลี่ยนเป็น{" "}
+                <span className="font-semibold text-foreground">
+                  &ldquo;รอชำระค่าบัตร&rdquo;
+                </span>{" "}
+                และปุ่มชำระเงินจะขึ้นในหน้าติดตามสถานะค่ะ
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4 text-sm">
+              <p className="font-semibold text-foreground">
+                ขั้นตอนถัดไป — จ่ายเอง
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                ลูกค้าชำระค่าบัตรกับทางผู้จัดเอง
+                ทางร้านจะเรียกเก็บเฉพาะค่ากดบัตรตอนสรุปยอดค่ะ
+              </p>
+            </div>
+          )}
         </Card>
       )}
 
@@ -663,7 +703,7 @@ export function StepDetails({
       {/* Price summary & confirm CTA — only in edit mode */}
       {allowEdit && (
         <Card className="space-y-4 p-5">
-          {!isFormType && paymentMethod === "store_pay" && (
+          {!isFormType && paymentMethod === "STORE_PAID" && (
             <div className="relative overflow-hidden rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">

@@ -64,6 +64,8 @@ export interface BookingDetailDTO {
    * within the ข้อมูลเชิงลึก step. The server enforces the same rule.
    */
   canCancelEntries: boolean;
+  /** วิธีชำระค่าบัตรที่ลูกค้าเลือกไว้ — null = ยังไม่ได้เลือก / งานฟอร์ม */
+  ticketPaymentMode: "STORE_PAID" | "SELF_PAID" | null;
 }
 
 const GENERIC_NOT_FOUND = "ไม่พบข้อมูลการจอง";
@@ -88,6 +90,7 @@ const bookingSelect = {
   depositPaid: true,
   refundAmount: true,
   status: true,
+  ticketPaymentMode: true,
   notes: true,
   deletedAt: true,
   customer: { select: { lineUserId: true } },
@@ -207,6 +210,7 @@ function shape(b: BookingRow): BookingDetailDTO {
     fields: b.event.deepInfoFields,
     entries,
     canCancelEntries: canCancelEntries(b.status),
+    ticketPaymentMode: b.ticketPaymentMode,
   };
 }
 
