@@ -525,10 +525,38 @@ export function StepDetails({
         )}
       </Card>
 
-      {/* Payment method — hidden for form-type events, edit flow only */}
-      {!isFormType && allowEdit && (
+      {/* Payment method — ticket events only. Shown in view mode too, so the
+          customer can check what they chose without entering the edit flow. */}
+      {!isFormType && (
         <Card className="space-y-4 p-5">
           <SectionHeader icon={CreditCard} title="วิธีการชำระ" />
+          {!allowEdit ? (
+            <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4">
+              {detail.ticketPaymentMode === "STORE_PAID" ? (
+                <>
+                  <p className="text-sm font-bold text-foreground">ฝากร้านจ่าย</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    โอนค่าบัตรให้ร้าน ก่อนวันกด 1 วัน — ทางร้านจะแจ้งยอดค่าบัตร
+                    ให้ทาง LINE แล้วปุ่มชำระเงินจะขึ้นในหน้าติดตามสถานะค่ะ
+                  </p>
+                </>
+              ) : detail.ticketPaymentMode === "SELF_PAID" ? (
+                <>
+                  <p className="text-sm font-bold text-foreground">จ่ายเอง</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    ลูกค้าชำระค่าบัตรกับทางผู้จัดเอง
+                    ทางร้านจะเรียกเก็บเฉพาะค่ากดบัตรตอนสรุปยอดค่ะ
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  ยังไม่ได้เลือกวิธีชำระค่าบัตร —
+                  เลือกได้ตอนกรอกข้อมูลการจองเพิ่มเติมค่ะ
+                </p>
+              )}
+            </div>
+          ) : (
+          <>
           <RadioGroup
             value={paymentMethod}
             onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
@@ -597,6 +625,8 @@ export function StepDetails({
                 ทางร้านจะเรียกเก็บเฉพาะค่ากดบัตรตอนสรุปยอดค่ะ
               </p>
             </div>
+          )}
+          </>
           )}
         </Card>
       )}
