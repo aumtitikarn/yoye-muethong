@@ -24,17 +24,21 @@ import {
   CreditCard,
   Loader2,
   MapPin,
-  Minus,
   Pencil,
-  Plus,
   Receipt,
   StickyNote,
   Ticket,
+  TriangleAlert,
   User,
   Users,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSaveDeepInfoMutation } from "@/lib/queries";
+import { toast } from "sonner";
+import {
+  useCancelBookingEntriesMutation,
+  useSaveDeepInfoMutation,
+} from "@/lib/queries";
 import type { BookingDetailDTO } from "@/lib/api";
 import { CautionNote, InfoRow, SectionHeader, StepIntro, baht } from "./wizard-blocks";
 
@@ -54,11 +58,14 @@ export function StepDetails({
 
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("store_pay");
-  const [adjustedQuantity, setAdjustedQuantity] = useState(1);
   // Answers keyed by "entryIndex:fieldId" — one set per booked name/ticket.
   const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [isEditingZone, setIsEditingZone] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Entry numbers the customer ticked for cancellation (not yet submitted).
+  const [entriesToRemove, setEntriesToRemove] = useState<number[]>([]);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const cancelEntries = useCancelBookingEntriesMutation(detail.bookingCode);
 
   // Sync editable state once the real booking loads.
   useEffect(() => {
@@ -66,7 +73,6 @@ export function StepDetails({
     setSelectedZoneId(
       detail.zones.find((z) => z.name === detail.zone)?.id ?? null,
     );
-    setAdjustedQuantity(Math.max(1, detail.quantity));
     setExtraValues(
       Object.fromEntries(
         detail.entries.flatMap((entry) =>
@@ -83,8 +89,48 @@ export function StepDetails({
   const isPerEntry = entries.length > 1;
   const answerKey = (entryIndex: number, fieldId: number) =>
     `${entryIndex}:${fieldId}`;
+
+  /**
+   * What the customer calls this slot. For form bookings that's the name they
+   * typed — without it they can't tell which รายชื่อ they are about to cancel.
+   * Falls back to the zone (tickets) or a plain "not filled in yet".
+   */
+  const entryLabel = (entry: (typeof entries)[number]): string => {
+    for (const f of extraFields) {
+      const v = (entry.values[String(f.id)] ?? "").trim();
+      if (v) return v;
+    }
+    return entry.zoneName ?? "ยังไม่ได้กรอกข้อมูล";
+  };
+
+  const toggleRemove = (entryIndex: number) =>
+    setEntriesToRemove((prev) =>
+      prev.includes(entryIndex)
+        ? prev.filter((i) => i !== entryIndex)
+        : [...prev, entryIndex],
+    );
+
+  const handleConfirmRemove = () => {
+    cancelEntries.mutate([...entriesToRemove].sort((a, b) => a - b), {
+      onSuccess: () => {
+        toast.success(
+          `ยกเลิก ${entriesToRemove.length} ${unitWord}เรียบร้อยแล้ว`,
+        );
+        setEntriesToRemove([]);
+        setRemoveConfirmOpen(false);
+        setIsEditingZone(false);
+      },
+      onError: (err) => {
+        toast.error(
+          err instanceof Error ? err.message : "ยกเลิกรายการไม่สำเร็จ",
+        );
+      },
+    });
+  };
   const selectedZone = detail.zones.find((z) => z.id === selectedZoneId);
-  const ticketsToCharge = Math.min(adjustedQuantity, detail.quantity);
+  // Quantity is now persisted server-side (cancelling entries updates the
+  // booking), so the price always reflects what is actually booked.
+  const ticketsToCharge = detail.quantity;
 
   const baseUnitPrice =
     detail.quantity > 0 ? detail.total / detail.quantity : 0;
@@ -100,6 +146,89 @@ export function StepDetails({
   const unitWord = isFormType ? "รายชื่อ" : "ใบ";
   const TypeIcon = isFormType ? ClipboardList : Ticket;
   const typeLabel = isFormType ? "ฟอร์มรายชื่อ" : "บัตรคอนเสิร์ต";
+
+  /**
+   * Pick exactly which booked slots to cancel. A bare counter can't work here:
+   * the customer must see *which* name goes, or they cancel the wrong person.
+   * At least one slot must remain — dropping all of them is a full cancellation,
+   * which lives on the tracking page with its own confirmation.
+   */
+  const entryPicker = (
+    <div className="space-y-3 rounded-2xl border-2 border-primary bg-primary/5 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-sm font-semibold text-foreground">
+          เลือก{unitWord}ที่ต้องการยกเลิก
+        </Label>
+        <span className="text-[10px] font-medium text-amber-600">
+          ⚠️ ลดได้เท่านั้น
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {entries.map((entry) => {
+          const checked = entriesToRemove.includes(entry.entryIndex);
+          const isLast = entries.length - entriesToRemove.length <= 1 && !checked;
+          return (
+            <label
+              key={entry.entryIndex}
+              className={cn(
+                "flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-background p-3 transition-colors",
+                checked
+                  ? "border-rose-400 bg-rose-50/70"
+                  : "border-border/60 hover:border-rose-200",
+                isLast && "cursor-not-allowed opacity-50",
+              )}
+            >
+              <input
+                type="checkbox"
+                className="size-4 accent-rose-500"
+                checked={checked}
+                disabled={isLast || cancelEntries.isPending}
+                onChange={() => toggleRemove(entry.entryIndex)}
+              />
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-accent">
+                {entry.entryIndex}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  className={cn(
+                    "block truncate text-sm font-semibold",
+                    checked && "text-rose-700 line-through",
+                  )}
+                >
+                  {entryLabel(entry)}
+                </span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {unitWord}ที่ {entry.entryIndex}
+                  {entry.zoneName ? ` · ${entry.zoneName}` : ""}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 border-t border-primary/20 pt-3">
+        <p className="text-xs text-muted-foreground">
+          เหลือ{" "}
+          <span className="font-bold text-foreground">
+            {entries.length - entriesToRemove.length} {unitWord}
+          </span>{" "}
+          จาก {entries.length}
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          className="gap-1.5 bg-rose-600 text-white hover:bg-rose-700"
+          disabled={entriesToRemove.length === 0 || cancelEntries.isPending}
+          onClick={() => setRemoveConfirmOpen(true)}
+        >
+          <XCircle className="size-3.5" />
+          ยกเลิก {entriesToRemove.length || ""} {unitWord}
+        </Button>
+      </div>
+    </div>
+  );
 
   // Every required field must be filled for every booked name, not just once.
   const extraFieldsValid = entries.every((entry) =>
@@ -256,58 +385,7 @@ export function StepDetails({
             />
 
             {allowEdit && isEditingZone ? (
-              <div className="space-y-4 rounded-2xl border-2 border-primary bg-primary/5 p-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold text-foreground">
-                    ปรับจำนวนรายชื่อ
-                  </Label>
-                  <span className="text-[10px] font-medium text-amber-600">
-                    ⚠️ ลดได้เท่านั้น
-                  </span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="inline-flex items-center rounded-2xl border border-border/70 bg-background px-2 py-1.5 shadow-sm">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-9 rounded-lg hover:bg-muted"
-                      onClick={() =>
-                        setAdjustedQuantity((prev) => Math.max(1, prev - 1))
-                      }
-                      disabled={adjustedQuantity === 1}
-                    >
-                      <Minus className="size-4" />
-                    </Button>
-                    <div className="min-w-[60px] text-center">
-                      <p className="text-2xl font-black leading-none text-accent">
-                        {adjustedQuantity}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-9 rounded-lg hover:bg-muted"
-                      onClick={() =>
-                        setAdjustedQuantity((prev) =>
-                          Math.min(detail.quantity, prev + 1),
-                        )
-                      }
-                      disabled={adjustedQuantity === detail.quantity}
-                    >
-                      <Plus className="size-4" />
-                    </Button>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    <p>จากจำนวนเดิม</p>
-                    <div className="flex items-center gap-1 font-semibold text-foreground">
-                      <Users className="size-3" />
-                      {detail.quantity} รายชื่อ
-                    </div>
-                  </div>
-                </div>
-              </div>
+              entryPicker
             ) : (
               <div className="flex items-center gap-4 rounded-2xl border border-border/60 bg-secondary/20 p-4">
                 <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/15 text-accent">
@@ -408,64 +486,12 @@ export function StepDetails({
                         </span>
                       </p>
                     </button>
-                    {isSelected && isEditingZone && (
-                      <div className="mt-3 space-y-2 border-t border-primary/20 pt-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-xs font-semibold text-muted-foreground">
-                            ปรับจำนวนบัตร
-                          </Label>
-                          <span className="text-[10px] font-medium text-amber-600">
-                            ⚠️ ลดได้เท่านั้น
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="inline-flex items-center rounded-xl border border-border/70 bg-background px-1.5 py-1 shadow-sm">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 rounded-lg"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAdjustedQuantity((prev) =>
-                                  Math.max(1, prev - 1),
-                                );
-                              }}
-                              disabled={adjustedQuantity === 1}
-                            >
-                              <Minus className="size-3.5" />
-                            </Button>
-                            <div className="min-w-[48px] text-center">
-                              <p className="text-xl font-black leading-none">
-                                {adjustedQuantity}
-                              </p>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 rounded-lg"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAdjustedQuantity((prev) =>
-                                  Math.min(detail.quantity, prev + 1),
-                                );
-                              }}
-                              disabled={adjustedQuantity === detail.quantity}
-                            >
-                              <Plus className="size-3.5" />
-                            </Button>
-                          </div>
-                          <p className="text-[10px] text-muted-foreground">
-                            จำนวนเดิม {detail.quantity} ใบ
-                          </p>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
+
+            {allowEdit && isEditingZone && entryPicker}
           </>
         )}
       </Card>
@@ -776,6 +802,81 @@ export function StepDetails({
             </Button>
             <Button className="flex-1" onClick={handleConfirm}>
               ยืนยัน
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm cancelling specific booked names/tickets (deposit forfeited) */}
+      <Dialog
+        open={removeConfirmOpen}
+        onOpenChange={(open) => {
+          if (!cancelEntries.isPending) setRemoveConfirmOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-1 flex size-12 items-center justify-center rounded-full bg-rose-100">
+              <TriangleAlert className="size-6 text-rose-600" />
+            </div>
+            <DialogTitle className="text-center">
+              ยืนยันการยกเลิก {entriesToRemove.length} {unitWord}
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              รายการที่จะถูกยกเลิกออกจากการจองนี้
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-border/60 bg-secondary/10 p-3">
+            {entries
+              .filter((e) => entriesToRemove.includes(e.entryIndex))
+              .map((entry) => (
+                <div
+                  key={entry.entryIndex}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-[11px] font-bold text-rose-700">
+                    {entry.entryIndex}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-semibold">
+                    {entryLabel(entry)}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {unitWord}ที่ {entry.entryIndex}
+                  </span>
+                </div>
+              ))}
+          </div>
+
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 text-center text-sm text-rose-700">
+            เมื่อยกเลิกแล้ว{" "}
+            <span className="font-bold">
+              จะไม่มีการคืนมัดจำในส่วนที่ลดลงทุกกรณี
+            </span>
+            <br />
+            คุณยังยืนยันการทำรายการหรือไม่
+          </div>
+
+          <DialogFooter className="sm:justify-center">
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              disabled={cancelEntries.isPending}
+              onClick={() => setRemoveConfirmOpen(false)}
+            >
+              ไม่ใช่ตอนนี้
+            </Button>
+            <Button
+              className="w-full gap-1.5 bg-rose-600 text-white hover:bg-rose-700 sm:w-auto"
+              disabled={cancelEntries.isPending}
+              onClick={handleConfirmRemove}
+            >
+              {cancelEntries.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <XCircle className="size-4" />
+              )}
+              ยืนยันยกเลิก
             </Button>
           </DialogFooter>
         </DialogContent>

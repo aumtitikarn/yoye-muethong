@@ -364,6 +364,31 @@ export async function cancelBooking(bookingCode: string): Promise<void> {
   }
 }
 
+/**
+ * Cancel specific booked names/tickets on the caller's own booking. The deposit
+ * for the dropped slots is not refunded. Throws on failure so the caller can
+ * surface the message.
+ */
+export async function cancelBookingEntries(
+  bookingCode: string,
+  removeEntryIndexes: number[]
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE_URL}/public/bookings/${encodeURIComponent(bookingCode)}/entries`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ removeEntryIndexes }),
+    }
+  );
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(json?.message ?? `ยกเลิกรายการไม่สำเร็จ (${res.status})`);
+  }
+}
+
 // ── Booking detail (single booking, owner-only) ────────────────────
 
 export interface DeepInfoFieldDTO {
@@ -382,6 +407,8 @@ export interface DeepInfoEntryDTO {
   entryIndex: number;
   /** fieldId (as a string key) -> answer. */
   values: Record<string, string>;
+  /** Zone this slot belongs to (ticket events); null for form bookings. */
+  zoneName: string | null;
 }
 
 export interface ZoneOptionDTO {

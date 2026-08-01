@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { toTrackingStatus } from "@/app/tracking/status-map";
+import { expandEntrySlots } from "@/lib/booking-entries";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,8 @@ export interface DeepInfoEntryDTO {
   entryIndex: number;
   /** fieldId (as a string key, since JSON object keys are strings) -> answer. */
   values: Record<string, string>;
+  /** Zone this slot belongs to (ticket events); null for form bookings. */
+  zoneName: string | null;
 }
 
 export interface ZoneOptionDTO {
@@ -87,7 +90,11 @@ const bookingSelect = {
     select: { fieldId: true, entryIndex: true, value: true },
   },
   bookingItems: {
+    // id order defines how entry 1..N map onto items — the same expansion the
+    // cancel-entries endpoint uses, so both agree on which slot is which.
+    orderBy: { id: "asc" },
     select: {
+      id: true,
       quantity: true,
       round: { select: { date: true, time: true } },
       zone: { select: { name: true } },
@@ -144,25 +151,26 @@ function shape(b: BookingRow): BookingDetailDTO {
     ),
   );
   const zone = zoneNames.length > 0 ? zoneNames.join(", ") : isForm ? "รายชื่อ" : "-";
-  const quantity = Math.max(1, b.bookingItems.reduce((s, i) => s + i.quantity, 0));
 
   // One answer set per booked name/ticket. Entries are always emitted for the
-  // full booked quantity so the form renders every slot, filled or not. Rows
-  // stored beyond the current quantity (e.g. the customer later reduced it) are
-  // ignored here rather than deleted — the admin still sees them.
+  // full booked quantity so the form renders every slot, filled or not.
   const answersByEntry = new Map<number, Record<string, string>>();
   for (const r of b.deepInfoResponses) {
     const bucket = answersByEntry.get(r.entryIndex) ?? {};
     bucket[String(r.fieldId)] = r.value;
     answersByEntry.set(r.entryIndex, bucket);
   }
-  const entries: DeepInfoEntryDTO[] = Array.from(
-    { length: quantity },
-    (_, i) => ({
-      entryIndex: i + 1,
-      values: answersByEntry.get(i + 1) ?? {},
-    }),
-  );
+  const slots = expandEntrySlots(b.bookingItems);
+  const entries: DeepInfoEntryDTO[] = slots.map(({ entryIndex, item }) => ({
+    entryIndex,
+    values: answersByEntry.get(entryIndex) ?? {},
+    zoneName: item.zone?.name ?? null,
+  }));
+  // Defensive: a booking with no items still shows one slot rather than none.
+  if (entries.length === 0) {
+    entries.push({ entryIndex: 1, values: answersByEntry.get(1) ?? {}, zoneName: null });
+  }
+  const quantity = entries.length;
 
   const zones: ZoneOptionDTO[] = isForm
     ? []

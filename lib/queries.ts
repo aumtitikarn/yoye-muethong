@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   cancelBooking,
+  cancelBookingEntries,
   fetchEvents,
   fetchBookings,
   fetchBookingDetail,
@@ -128,6 +129,24 @@ export function useCancelBookingMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
       queryClient.invalidateQueries({ queryKey: ["booking-detail"] });
+    },
+  });
+}
+
+/**
+ * Cancel specific booked names/tickets on a booking (ลดจำนวน). The deposit for
+ * the dropped slots is not refunded.
+ */
+export function useCancelBookingEntriesMutation(bookingCode: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (removeEntryIndexes: number[]) =>
+      cancelBookingEntries(bookingCode as string, removeEntryIndexes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({
+        queryKey: ["booking-detail", bookingCode],
+      });
     },
   });
 }
