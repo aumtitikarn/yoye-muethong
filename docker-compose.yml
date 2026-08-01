@@ -40,3 +40,4 @@ services:
 networks:
   yoye-link:
     external: true
+    name: traefik-4yt9_host
