@@ -9,6 +9,8 @@ const GENERIC_NOT_FOUND = "ไม่พบข้อมูลการจอง";
 
 export interface DeepInfoResponseItem {
   fieldId: number;
+  /** 1-based booked name/ticket this answer belongs to. Defaults to 1. */
+  entryIndex?: number;
   value: string;
 }
 
@@ -51,12 +53,27 @@ export async function POST(
   }
 
   // Normalise + validate shape up front.
-  const items: DeepInfoResponseItem[] = [];
+  type NormalisedItem = { fieldId: number; entryIndex: number; value: string };
+  const items: NormalisedItem[] = [];
+  const seen = new Set<string>();
   for (const r of responses) {
     const fieldId = Number(r?.fieldId);
     if (!Number.isInteger(fieldId) || fieldId <= 0) {
       return NextResponse.json({ message: "ข้อมูลไม่ถูกต้อง" }, { status: 400 });
     }
+    // Absent entryIndex means the pre-per-entry payload shape → รายชื่อที่ 1.
+    const entryIndex = r?.entryIndex === undefined ? 1 : Number(r.entryIndex);
+    if (!Number.isInteger(entryIndex) || entryIndex <= 0) {
+      return NextResponse.json({ message: "ข้อมูลไม่ถูกต้อง" }, { status: 400 });
+    }
+    const key = `${fieldId}:${entryIndex}`;
+    if (seen.has(key)) {
+      return NextResponse.json(
+        { message: "ส่งข้อมูลซ้ำสำหรับรายชื่อเดียวกัน" },
+        { status: 400 }
+      );
+    }
+    seen.add(key);
     const value = typeof r?.value === "string" ? r.value : "";
     if (value.length > 2000) {
       return NextResponse.json(
@@ -64,7 +81,7 @@ export async function POST(
         { status: 400 }
       );
     }
-    items.push({ fieldId, value });
+    items.push({ fieldId, entryIndex, value });
   }
 
   try {
@@ -76,6 +93,7 @@ export async function POST(
         eventId: true,
         deletedAt: true,
         customer: { select: { lineUserId: true } },
+        bookingItems: { select: { quantity: true } },
       },
     });
     if (
@@ -84,6 +102,19 @@ export async function POST(
       booking.customer.lineUserId !== user.sub
     ) {
       return NextResponse.json({ message: GENERIC_NOT_FOUND }, { status: 404 });
+    }
+
+    // A booking for 3 รายชื่อ has exactly 3 answer slots — reject anything past
+    // that so a crafted payload can't stash rows the UI would never show.
+    const entryCount = Math.max(
+      1,
+      booking.bookingItems.reduce((s, i) => s + i.quantity, 0),
+    );
+    if (items.some((i) => i.entryIndex > entryCount)) {
+      return NextResponse.json(
+        { message: `กรอกข้อมูลได้สูงสุด ${entryCount} รายชื่อตามจำนวนที่จอง` },
+        { status: 400 }
+      );
     }
 
     // Only allow fields that belong to this booking's event, and enforce
@@ -105,7 +136,12 @@ export async function POST(
       }
       if (field.isRequired && item.value.trim().length === 0) {
         return NextResponse.json(
-          { message: `กรุณากรอก "${field.label}"` },
+          {
+            message:
+              entryCount > 1
+                ? `กรุณากรอก "${field.label}" ของรายชื่อที่ ${item.entryIndex}`
+                : `กรุณากรอก "${field.label}"`,
+          },
           { status: 400 }
         );
       }
@@ -115,12 +151,14 @@ export async function POST(
     await prisma.$transaction(async (tx) => {
       const existing = await tx.deepInfoResponse.findMany({
         where: { bookingId, fieldId: { in: fieldIds } },
-        select: { id: true, fieldId: true, value: true },
+        select: { id: true, fieldId: true, entryIndex: true, value: true },
       });
-      const existingMap = new Map(existing.map((e) => [e.fieldId, e]));
+      const existingMap = new Map(
+        existing.map((e) => [`${e.fieldId}:${e.entryIndex}`, e]),
+      );
 
       for (const item of items) {
-        const prev = existingMap.get(item.fieldId);
+        const prev = existingMap.get(`${item.fieldId}:${item.entryIndex}`);
         const trimmed = item.value.trim();
 
         if (trimmed.length === 0) {
@@ -129,7 +167,12 @@ export async function POST(
         }
         if (!prev) {
           await tx.deepInfoResponse.create({
-            data: { bookingId, fieldId: item.fieldId, value: trimmed },
+            data: {
+              bookingId,
+              fieldId: item.fieldId,
+              entryIndex: item.entryIndex,
+              value: trimmed,
+            },
           });
         } else if (prev.value !== trimmed) {
           await tx.deepInfoResponse.update({

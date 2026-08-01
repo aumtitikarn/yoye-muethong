@@ -48,28 +48,28 @@ export async function pushLineTextMessage(
   }
 }
 
-export interface QueueReviewMessageParams {
+export interface BookingConfirmedMessageParams {
   bookingId: string;
   eventName: string;
 }
 
 /**
- * รอแอดมินอนุมัติคิว — sent right after a customer's deposit is settled and the
- * booking enters WAITING_QUEUE_APPROVAL, telling them the queue is now pending
- * admin review.
+ * จองคิวสำเร็จ — sent right after a customer's deposit is settled and the booking
+ * enters QUEUE_BOOKED. A settled deposit confirms the queue outright (there is no
+ * admin-approval step), so this message confirms the booking and points the
+ * customer at the next step: filling in the booking info.
  */
-export function buildQueueReviewMessage({
+export function buildBookingConfirmedMessage({
   bookingId,
   eventName,
-}: QueueReviewMessageParams): string {
+}: BookingConfirmedMessageParams): string {
   return [
-    "📢 𝚚𝚞𝚎𝚞𝚎 𝚛𝚎𝚟𝚒𝚎𝚠 : อยู่ระหว่างรออนุมัติคิวค่ะ ♡ 📝🎀",
+    "📢 𝚋𝚘𝚘𝚔𝚒𝚗𝚐 𝚗𝚘𝚝𝚒𝚌𝚎 : จองคิวสำเร็จแล้วค่ะ ♡ 🎉",
     `🧾 รหัสการจอง : ${bookingId}`,
     `🎫 งาน : ${eventName}`,
-    "ทางร้านได้รับข้อมูลการจองเรียบร้อยแล้วนะคะ 💖",
-    "ขณะนี้รายการอยู่ระหว่างรอแอดมินตรวจสอบและอนุมัติคิวค่ะ",
-    "หากข้อมูลถูกต้องครบถ้วนแล้ว",
-    "แอดมินจะอัปเดตสถานะถัดไปให้ลูกค้าทราบนะคะ 🐰✨",
+    "ทางร้านได้รับมัดจำและยืนยันการจองคิวของลูกค้าเรียบร้อยแล้วนะคะ 💖",
+    "📌 ขั้นตอนถัดไป รบกวนลูกค้ากรอกข้อมูลสำหรับกดบัตรให้ครบถ้วนภายในเวลาที่ร้านกำหนดนะคะ 💌",
+    "หากข้อมูลไม่ครบถ้วน อาจส่งผลให้ร้านไม่สามารถดำเนินการกดบัตรได้ทันเวลาค่ะ 🐰✨",
   ].join("\n");
 }
 

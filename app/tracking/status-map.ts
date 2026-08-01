@@ -2,12 +2,11 @@ import type { BookingStatus } from "@prisma/client";
 import { TrackingStatus } from "./types/enum";
 
 /**
- * Map yoye-admin's fine-grained BookingStatus (28 states) onto the storefront's
- * customer-facing TrackingStatus (12 states). This is intentionally lossy — the
+ * Map yoye-admin's fine-grained BookingStatus (32 states) onto the storefront's
+ * customer-facing TrackingStatus (16 states). This is intentionally lossy — the
  * customer sees a coarse, friendly status; the admin keeps the detail.
  */
 const STATUS_MAP: Record<BookingStatus, TrackingStatus> = {
-  WAITING_QUEUE_APPROVAL: TrackingStatus.WAIT_QUEUE_APPROVAL,
   WAITING_DEPOSIT_TRANSFER: TrackingStatus.WAIT_FULL_PAYMENT,
   WAITING_DEPOSIT_VERIFY: TrackingStatus.BOOKING_CONFIRMED,
   QUEUE_BOOKED: TrackingStatus.BOOKING_CONFIRMED,
@@ -49,3 +48,33 @@ const STATUS_MAP: Record<BookingStatus, TrackingStatus> = {
 export function toTrackingStatus(status: BookingStatus): TrackingStatus {
   return STATUS_MAP[status] ?? TrackingStatus.BOOKING_CONFIRMED;
 }
+
+/**
+ * Statuses a customer may cancel their own queue from — everything before the
+ * team starts pressing. Once pressing has begun (or the booking has moved into
+ * a money / terminal stage) the outcome is no longer the customer's to decide,
+ * so those cancellations go through an admin instead.
+ *
+ * Single source of truth: the tracking page uses it to decide whether to show
+ * the button, and POST /public/bookings/:code/cancel enforces it server-side.
+ */
+const CANCELLABLE_STATUSES: ReadonlySet<BookingStatus> = new Set([
+  "WAITING_DEPOSIT_TRANSFER",
+  "WAITING_DEPOSIT_VERIFY",
+  "QUEUE_BOOKED",
+  "WAITING_BOOKING_INFO",
+  "TRANSFERRING_TICKET",
+  "CONFIRMING_TICKET",
+  "WAITING_ADMIN_CONFIRM",
+  "READY_TO_BOOK",
+] satisfies BookingStatus[]);
+
+/** True when the customer may still cancel this booking themselves. */
+export function canCancelBooking(status: BookingStatus): boolean {
+  return CANCELLABLE_STATUSES.has(status);
+}
+
+/** Array form, for Prisma `status: { in: ... }` filters. */
+export const cancellableStatuses = (): BookingStatus[] => [
+  ...CANCELLABLE_STATUSES,
+];

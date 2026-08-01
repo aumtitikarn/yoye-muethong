@@ -304,6 +304,8 @@ export interface TrackingRowDTO {
   haveDeepInfo: boolean;
   /** True when the customer has already submitted refund bank info for this booking. */
   haveRefundInfo: boolean;
+  /** True while the customer may still cancel this queue themselves (deposit forfeited). */
+  canCancel: boolean;
 }
 
 export type FetchBookingsResult =
@@ -344,6 +346,24 @@ export async function fetchBookings(
   }
 }
 
+/**
+ * Cancel the caller's own queue. Requires a LINE session + ownership and only
+ * works before pressing starts (both enforced server-side). The deposit is
+ * forfeited. Throws on failure so the caller can surface the message.
+ */
+export async function cancelBooking(bookingCode: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE_URL}/public/bookings/${encodeURIComponent(bookingCode)}/cancel`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(json?.message ?? `ยกเลิกการจองไม่สำเร็จ (${res.status})`);
+  }
+}
+
 // ── Booking detail (single booking, owner-only) ────────────────────
 
 export interface DeepInfoFieldDTO {
@@ -351,8 +371,17 @@ export interface DeepInfoFieldDTO {
   otherCode: string;
   label: string;
   isRequired: boolean;
-  /** The customer's previously saved answer, if any. */
-  value: string;
+}
+
+/**
+ * One booked name/ticket's worth of answers. A booking for 3 รายชื่อ gets three
+ * of these (entryIndex 1..3), each carrying an answer for every field.
+ */
+export interface DeepInfoEntryDTO {
+  /** 1-based — "รายชื่อที่ 1", "รายชื่อที่ 2", … */
+  entryIndex: number;
+  /** fieldId (as a string key) -> answer. */
+  values: Record<string, string>;
 }
 
 export interface ZoneOptionDTO {
@@ -381,7 +410,10 @@ export interface BookingDetailDTO {
   trackingStatus: string;
   note?: string;
   zones: ZoneOptionDTO[];
+  /** Field definitions for this event (the same set repeats for every entry). */
   fields: DeepInfoFieldDTO[];
+  /** Always exactly `quantity` items, blanks included, ordered by entryIndex. */
+  entries: DeepInfoEntryDTO[];
 }
 
 /** Fetch full detail of the caller's own booking (incl. admin extra fields). */
@@ -406,6 +438,8 @@ export async function fetchBookingDetail(
 
 export interface DeepInfoResponseInput {
   fieldId: number;
+  /** 1-based booked name/ticket this answer belongs to. */
+  entryIndex: number;
   value: string;
 }
 

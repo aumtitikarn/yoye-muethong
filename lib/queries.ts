@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  cancelBooking,
   fetchEvents,
   fetchBookings,
   fetchBookingDetail,
@@ -111,6 +112,22 @@ export function useSaveDeepInfoMutation(bookingCode: string | undefined) {
       queryClient.invalidateQueries({
         queryKey: ["booking-detail", bookingCode],
       });
+    },
+  });
+}
+
+/**
+ * Cancel one of the customer's own queues (deposit forfeited). Takes the
+ * booking code per call so a single hook can serve every row on the tracking
+ * page.
+ */
+export function useCancelBookingMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bookingCode: string) => cancelBooking(bookingCode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["booking-detail"] });
     },
   });
 }

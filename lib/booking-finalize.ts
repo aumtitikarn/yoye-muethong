@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { retrieveCharge } from "@/lib/omise";
 import {
-  buildQueueReviewMessage,
+  buildBookingConfirmedMessage,
   buildTicketPaymentReviewMessage,
   pushLineTextMessage,
 } from "@/lib/line-push";
@@ -81,10 +81,10 @@ export async function finalizeChargeToBooking(
           eventId,
           customerId,
           nameCustomer: payload.nameCustomer ?? undefined,
-          // Deposit settled via Omise → the queue is not auto-confirmed; an admin
-          // still has to approve it, so the booking waits in WAITING_QUEUE_APPROVAL
-          // (the customer gets a "รอแอดมินอนุมัติคิว" LINE below).
-          status: "WAITING_QUEUE_APPROVAL",
+          // Deposit settled via Omise → the queue is confirmed outright. There is
+          // no admin-approval step, so the booking lands on QUEUE_BOOKED
+          // (the customer gets a "จองคิวสำเร็จ" LINE below).
+          status: "QUEUE_BOOKED",
           paymentStatus: "PAID",
           depositPaid,
           notes: payload.notes ?? undefined,
@@ -110,17 +110,16 @@ export async function finalizeChargeToBooking(
     throw err;
   }
 
-  // First (and only) creator notifies the customer that the queue is now
-  // pending admin approval. Best-effort — a LINE failure must not fail the
-  // booking, and it only runs on genuine creation so the webhook + client
-  // confirm race can't double-send.
-  await notifyQueueReview(bookingCode, eventId, customerId);
+  // First (and only) creator notifies the customer that the queue is confirmed.
+  // Best-effort — a LINE failure must not fail the booking, and it only runs on
+  // genuine creation so the webhook + client confirm race can't double-send.
+  await notifyBookingConfirmed(bookingCode, eventId, customerId);
 
   return { ok: true, bookingCode, created: true };
 }
 
-/** Send the "รอแอดมินอนุมัติคิว" LINE push. Never throws. */
-async function notifyQueueReview(
+/** Send the "จองคิวสำเร็จ" LINE push. Never throws. */
+async function notifyBookingConfirmed(
   bookingCode: string,
   eventId: number,
   customerId: number,
@@ -139,13 +138,13 @@ async function notifyQueueReview(
     if (!customer?.lineUserId) return; // customer hasn't linked LINE — nothing to push
     await pushLineTextMessage(
       customer.lineUserId,
-      buildQueueReviewMessage({
+      buildBookingConfirmedMessage({
         bookingId: bookingCode,
         eventName: event?.name ?? "-",
       }),
     );
   } catch (err) {
-    console.error("notifyQueueReview error:", err);
+    console.error("notifyBookingConfirmed error:", err);
   }
 }
 

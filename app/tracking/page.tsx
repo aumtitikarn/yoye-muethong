@@ -25,9 +25,22 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { STATUS_METADATA, TrackingStatus } from "./types/enum";
 import type { TrackingRowDTO } from "@/lib/api";
-import { useBookingsQuery, BookingsError } from "@/lib/queries";
+import {
+  useBookingsQuery,
+  useCancelBookingMutation,
+  BookingsError,
+} from "@/lib/queries";
 import {
   ChevronLeft,
   ChevronRight,
@@ -36,7 +49,10 @@ import {
   EllipsisVertical,
   FileText,
   Landmark,
+  Loader2,
   RefreshCcw,
+  TriangleAlert,
+  XCircle,
 } from "lucide-react";
 
 type TrackingRow = {
@@ -49,6 +65,7 @@ type TrackingRow = {
   totalPrice: number;
   haveDeepInfo: boolean;
   haveRefundInfo: boolean;
+  canCancel: boolean;
 };
 
 const PAGE_SIZE = 5;
@@ -66,13 +83,23 @@ function dtoToRow(dto: TrackingRowDTO): TrackingRow {
     totalPrice: dto.totalPrice,
     haveDeepInfo: dto.haveDeepInfo,
     haveRefundInfo: dto.haveRefundInfo,
+    canCancel: dto.canCancel,
   };
 }
 
-/** Three-dots menu with a link to the full booking detail page. */
-function BookingRowMenu({ bookingId }: { bookingId: string }) {
+/** Three-dots menu: booking detail, plus self-cancel while it is still allowed. */
+function BookingRowMenu({
+  bookingId,
+  canCancel,
+  onCancel,
+}: {
+  bookingId: string;
+  canCancel: boolean;
+  onCancel: () => void;
+}) {
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           size="icon"
@@ -94,8 +121,90 @@ function BookingRowMenu({ bookingId }: { bookingId: string }) {
           <FileText className="size-4" />
           รายละเอียดการจอง
         </Link>
+        {canCancel && (
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onCancel();
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50"
+          >
+            <XCircle className="size-4" />
+            ยกเลิกการจอง
+          </button>
+        )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * Confirmation for a customer-initiated cancellation. The deposit is forfeited
+ * with no exceptions, so the warning is stated plainly and confirming takes a
+ * deliberate second click.
+ */
+function CancelBookingDialog({
+  bookingId,
+  onOpenChange,
+  onConfirm,
+  isPending,
+}: {
+  bookingId: string | null;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <Dialog
+      open={bookingId !== null}
+      onOpenChange={(open) => {
+        // Never let a backdrop click close the dialog mid-request.
+        if (!isPending) onOpenChange(open);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="mx-auto mb-1 flex size-12 items-center justify-center rounded-full bg-rose-100">
+            <TriangleAlert className="size-6 text-rose-600" />
+          </div>
+          <DialogTitle className="text-center">ยืนยันการยกเลิกการจอง</DialogTitle>
+          <DialogDescription className="text-center">
+            รหัสการจอง{" "}
+            <span className="font-semibold text-foreground">{bookingId}</span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 text-center text-sm text-rose-700">
+          เมื่อยกเลิกการจอง <span className="font-bold">จะไม่มีการคืนมัดจำทุกกรณี</span>
+          <br />
+          คุณยังยืนยันการทำรายการหรือไม่
+        </div>
+
+        <DialogFooter className="sm:justify-center">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            disabled={isPending}
+            onClick={() => onOpenChange(false)}
+          >
+            ไม่ใช่ตอนนี้
+          </Button>
+          <Button
+            className="w-full gap-1.5 bg-rose-600 text-white hover:bg-rose-700 sm:w-auto"
+            disabled={isPending}
+            onClick={onConfirm}
+          >
+            {isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <XCircle className="size-4" />
+            )}
+            ยืนยันยกเลิกการจอง
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -119,6 +228,9 @@ export default function TrackingPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  // Booking code awaiting cancellation confirmation (null = dialog closed).
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const cancelBooking = useCancelBookingMutation();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
@@ -164,6 +276,22 @@ export default function TrackingPage() {
   const handleRefresh = () => {
     setCurrentPage(1);
     refetch();
+  };
+
+  const handleConfirmCancel = () => {
+    if (!cancelTarget) return;
+    cancelBooking.mutate(cancelTarget, {
+      onSuccess: () => {
+        toast.success(`ยกเลิกการจอง ${cancelTarget} เรียบร้อยแล้ว`);
+        setCancelTarget(null);
+      },
+      onError: (err) => {
+        toast.error(
+          err instanceof Error ? err.message : "ยกเลิกการจองไม่สำเร็จ",
+        );
+        // Keep the dialog open so the customer can read the reason and retry.
+      },
+    });
   };
 
   const checkScrollButtons = useCallback(() => {
@@ -509,6 +637,17 @@ export default function TrackingPage() {
                           </Link>
                         </Button>
                       )}
+                      {row.canCancel && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mt-2 w-full gap-1.5 rounded-xl font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                          onClick={() => setCancelTarget(row.bookingId)}
+                        >
+                          <XCircle className="size-3.5" />
+                          ยกเลิกการจอง
+                        </Button>
+                      )}
                     </div>
                   );
                 })}
@@ -638,7 +777,11 @@ export default function TrackingPage() {
                             className="text-right"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <BookingRowMenu bookingId={row.bookingId} />
+                            <BookingRowMenu
+                              bookingId={row.bookingId}
+                              canCancel={row.canCancel}
+                              onCancel={() => setCancelTarget(row.bookingId)}
+                            />
                           </TableCell>
                         </TableRow>
                       );
@@ -728,6 +871,15 @@ export default function TrackingPage() {
           </>
         )}
       </div>
+
+      <CancelBookingDialog
+        bookingId={cancelTarget}
+        onOpenChange={(open) => {
+          if (!open) setCancelTarget(null);
+        }}
+        onConfirm={handleConfirmCancel}
+        isPending={cancelBooking.isPending}
+      />
     </main>
   );
 }

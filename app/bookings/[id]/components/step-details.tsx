@@ -55,7 +55,8 @@ export function StepDetails({
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("store_pay");
   const [adjustedQuantity, setAdjustedQuantity] = useState(1);
-  const [extraValues, setExtraValues] = useState<Record<number, string>>({});
+  // Answers keyed by "entryIndex:fieldId" — one set per booked name/ticket.
+  const [extraValues, setExtraValues] = useState<Record<string, string>>({});
   const [isEditingZone, setIsEditingZone] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -68,12 +69,20 @@ export function StepDetails({
     setAdjustedQuantity(Math.max(1, detail.quantity));
     setExtraValues(
       Object.fromEntries(
-        detail.fields.filter((f) => f.value).map((f) => [f.id, f.value]),
+        detail.entries.flatMap((entry) =>
+          Object.entries(entry.values)
+            .filter(([, v]) => v)
+            .map(([fieldId, v]) => [`${entry.entryIndex}:${fieldId}`, v]),
+        ),
       ),
     );
   }, [detail]);
 
   const extraFields = detail.fields;
+  const entries = detail.entries;
+  const isPerEntry = entries.length > 1;
+  const answerKey = (entryIndex: number, fieldId: number) =>
+    `${entryIndex}:${fieldId}`;
   const selectedZone = detail.zones.find((z) => z.id === selectedZoneId);
   const ticketsToCharge = Math.min(adjustedQuantity, detail.quantity);
 
@@ -92,21 +101,40 @@ export function StepDetails({
   const TypeIcon = isFormType ? ClipboardList : Ticket;
   const typeLabel = isFormType ? "ฟอร์มรายชื่อ" : "บัตรคอนเสิร์ต";
 
-  const extraFieldsValid = extraFields.every(
-    (f) => !f.isRequired || (extraValues[f.id] ?? "").trim().length > 0,
+  // Every required field must be filled for every booked name, not just once.
+  const extraFieldsValid = entries.every((entry) =>
+    extraFields.every(
+      (f) =>
+        !f.isRequired ||
+        (extraValues[answerKey(entry.entryIndex, f.id)] ?? "").trim().length > 0,
+    ),
   );
   const canSubmit = selectedZoneId !== null && extraFieldsValid;
   const canConfirm = isFormType ? extraFieldsValid : canSubmit;
 
-  const hasSavedDeepInfo = extraFields.some((f) => f.value.trim().length > 0);
+  // Locking is per entry, not per booking: a booking made before this feature
+  // has answers only for entry 1, and those customers must still be able to
+  // fill in the remaining names. Each entry locks once it has a saved answer.
+  const savedEntries = new Set(
+    entries
+      .filter((entry) =>
+        Object.values(entry.values).some((v) => v.trim().length > 0),
+      )
+      .map((entry) => entry.entryIndex),
+  );
+  const hasSavedDeepInfo =
+    extraFields.length > 0 && savedEntries.size === entries.length;
   const isSaving = saveDeepInfo.isPending || saveDeepInfo.isSuccess;
 
   const handleSaveDeepInfo = () => {
     saveDeepInfo.mutate(
-      extraFields.map((f) => ({
-        fieldId: f.id,
-        value: (extraValues[f.id] ?? "").trim(),
-      })),
+      entries.flatMap((entry) =>
+        extraFields.map((f) => ({
+          fieldId: f.id,
+          entryIndex: entry.entryIndex,
+          value: (extraValues[answerKey(entry.entryIndex, f.id)] ?? "").trim(),
+        })),
+      ),
       { onSuccess: () => router.push("/tracking") },
     );
   };
@@ -496,7 +524,9 @@ export function StepDetails({
           title="ข้อมูลเพิ่มเติม"
           hint={
             extraFields.length > 0
-              ? "กรอกข้อมูลให้ครบเพื่อยืนยันการจอง"
+              ? isPerEntry
+                ? `กรอกให้ครบทั้ง ${entries.length} ${unitWord} เพื่อยืนยันการจอง`
+                : "กรอกข้อมูลให้ครบเพื่อยืนยันการจอง"
               : undefined
           }
           action={
@@ -516,34 +546,75 @@ export function StepDetails({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {extraFields.map((field) => (
-              <div key={field.id} className="space-y-1.5">
-                <Label
-                  htmlFor={`extra-${field.id}`}
-                  className="text-sm font-medium"
+          <div className="space-y-4">
+            {entries.map((entry) => {
+              const body = (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {extraFields.map((field) => {
+                    const key = answerKey(entry.entryIndex, field.id);
+                    return (
+                      <div key={field.id} className="space-y-1.5">
+                        <Label
+                          htmlFor={`extra-${key}`}
+                          className="text-sm font-medium"
+                        >
+                          {field.label}
+                          {field.isRequired && (
+                            <span className="ml-1 text-destructive">*</span>
+                          )}
+                        </Label>
+                        <Input
+                          id={`extra-${key}`}
+                          placeholder={field.label}
+                          value={extraValues[key] ?? ""}
+                          disabled={
+                            savedEntries.has(entry.entryIndex) || !allowEdit
+                          }
+                          className="h-11 rounded-xl text-foreground disabled:opacity-100 disabled:text-foreground"
+                          onChange={(e) => {
+                            if (saveDeepInfo.isSuccess) saveDeepInfo.reset();
+                            setExtraValues((prev) => ({
+                              ...prev,
+                              [key]: e.target.value,
+                            }));
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+
+              // A single booked entry needs no per-entry heading — keep the old
+              // flat layout so nothing changes for 1-name bookings.
+              if (!isPerEntry) return <div key={entry.entryIndex}>{body}</div>;
+
+              return (
+                <div
+                  key={entry.entryIndex}
+                  className="space-y-3 rounded-2xl border border-border/60 bg-secondary/10 p-4"
                 >
-                  {field.label}
-                  {field.isRequired && (
-                    <span className="ml-1 text-destructive">*</span>
-                  )}
-                </Label>
-                <Input
-                  id={`extra-${field.id}`}
-                  placeholder={field.label}
-                  value={extraValues[field.id] ?? ""}
-                  disabled={hasSavedDeepInfo || !allowEdit}
-                  className="h-11 rounded-xl text-foreground disabled:opacity-100 disabled:text-foreground"
-                  onChange={(e) => {
-                    if (saveDeepInfo.isSuccess) saveDeepInfo.reset();
-                    setExtraValues((prev) => ({
-                      ...prev,
-                      [field.id]: e.target.value,
-                    }));
-                  }}
-                />
-              </div>
-            ))}
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-accent">
+                      {entry.entryIndex}
+                    </span>
+                    <p className="text-sm font-bold text-foreground">
+                      {unitWord}ที่ {entry.entryIndex}
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      จาก {entries.length} {unitWord}
+                    </span>
+                    {savedEntries.has(entry.entryIndex) && (
+                      <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                        <BadgeCheck className="size-3" />
+                        บันทึกแล้ว
+                      </span>
+                    )}
+                  </div>
+                  {body}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -662,22 +733,35 @@ export function StepDetails({
               </span>
             </div>
             {extraFields.length > 0 && (
-              <div className="space-y-2 border-t border-border/60 pt-2">
+              <div className="max-h-64 space-y-3 overflow-y-auto border-t border-border/60 pt-2">
                 <p className="font-semibold">ข้อมูลเพิ่มเติม</p>
-                {extraFields.map((field) => {
-                  const value = (extraValues[field.id] ?? "").trim();
-                  return (
-                    <div
-                      key={field.id}
-                      className="flex items-start justify-between gap-3"
-                    >
-                      <span className="text-muted-foreground">{field.label}</span>
-                      <span className="min-w-0 break-words text-right font-semibold">
-                        {value || "—"}
-                      </span>
-                    </div>
-                  );
-                })}
+                {entries.map((entry) => (
+                  <div key={entry.entryIndex} className="space-y-1">
+                    {isPerEntry && (
+                      <p className="text-xs font-bold text-accent">
+                        {unitWord}ที่ {entry.entryIndex}
+                      </p>
+                    )}
+                    {extraFields.map((field) => {
+                      const value = (
+                        extraValues[answerKey(entry.entryIndex, field.id)] ?? ""
+                      ).trim();
+                      return (
+                        <div
+                          key={field.id}
+                          className="flex items-start justify-between gap-3"
+                        >
+                          <span className="text-muted-foreground">
+                            {field.label}
+                          </span>
+                          <span className="min-w-0 break-words text-right font-semibold">
+                            {value || "—"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             )}
           </div>

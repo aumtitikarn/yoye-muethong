@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
-import { toTrackingStatus } from "@/app/tracking/status-map";
+import { canCancelBooking, toTrackingStatus } from "@/app/tracking/status-map";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +20,8 @@ export interface TrackingRowDTO {
   haveDeepInfo: boolean;
   /** True when the customer has already submitted refund bank info for this booking. */
   haveRefundInfo: boolean;
+  /** True while the customer may still cancel this queue themselves (deposit forfeited). */
+  canCancel: boolean;
 }
 
 const bookingSelect = {
@@ -30,7 +32,14 @@ const bookingSelect = {
   shippingFee: true,
   vatAmount: true,
   createdAt: true,
-  event: { select: { name: true, type: true, eventDate: true } },
+  event: {
+    select: {
+      name: true,
+      type: true,
+      eventDate: true,
+      deepInfoFields: { select: { id: true } },
+    },
+  },
   bookingItems: {
     select: {
       quantity: true,
@@ -38,7 +47,8 @@ const bookingSelect = {
       zone: { select: { name: true } },
     },
   },
-  _count: { select: { deepInfoResponses: true, refundRequests: true } },
+  deepInfoResponses: { select: { fieldId: true, entryIndex: true } },
+  _count: { select: { refundRequests: true } },
 } satisfies Prisma.BookingSelect;
 
 type BookingRow = Prisma.BookingGetPayload<{ select: typeof bookingSelect }>;
@@ -82,9 +92,26 @@ function toDTO(b: BookingRow): TrackingRowDTO {
     paymentDeadline: null,
     totalPrice:
       b.netCardPrice + b.serviceFee + b.shippingFee + b.vatAmount,
-    haveDeepInfo: b._count.deepInfoResponses > 0,
+    haveDeepInfo: isDeepInfoComplete(b),
     haveRefundInfo: b._count.refundRequests > 0,
+    canCancel: canCancelBooking(b.status),
   };
+}
+
+/**
+ * True only when every booked name/ticket has an answer for every field — a
+ * booking for 3 รายชื่อ with only the first one filled still needs attention,
+ * so the tracking page keeps showing "กรอกข้อมูลการจองเพิ่มเติม".
+ * Blank answers are deleted rather than stored, so counting rows is enough.
+ */
+function isDeepInfoComplete(b: BookingRow): boolean {
+  const fieldCount = b.event.deepInfoFields.length;
+  if (fieldCount === 0) return true;
+  const entryCount = Math.max(
+    1,
+    b.bookingItems.reduce((s, i) => s + i.quantity, 0),
+  );
+  return b.deepInfoResponses.length >= fieldCount * entryCount;
 }
 
 // GET /api/v1/public/bookings

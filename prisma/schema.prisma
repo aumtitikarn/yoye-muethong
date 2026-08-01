@@ -30,7 +30,6 @@ enum QueueAcceptanceStatus {
 // Booking lifecycle, owned by yoye-admin. The storefront reads it (tracking) but
 // never writes it. Kept in sync manually with the admin schema.
 enum BookingStatus {
-  WAITING_QUEUE_APPROVAL
   WAITING_DEPOSIT_TRANSFER
   WAITING_DEPOSIT_VERIFY
   QUEUE_BOOKED
@@ -94,7 +93,7 @@ model Booking {
   eventId       Int
   customerId    Int
   nameCustomer  String?
-  status        BookingStatus @default(WAITING_QUEUE_APPROVAL)
+  status        BookingStatus @default(QUEUE_BOOKED)
   paymentStatus PaymentStatus @default(UNPAID)
   netCardPrice  Float         @default(0)
   serviceFee    Float         @default(0)
@@ -116,9 +115,41 @@ model Booking {
   deepInfoResponses     DeepInfoResponse[]
   fulfillment           Fulfillment?
   refundRequests        RefundRequest[]
+  statusLogs            BookingStatusLog[]
   ticketPaymentRequests TicketPaymentRequest[]
 
   @@map("bookings")
+}
+
+/// Audit trail of booking status changes, read by the admin's booking timeline.
+/// The storefront writes exactly one kind of row here — the customer cancelling
+/// their own queue — using the shared "system" actor, since `changedBy` is NOT
+/// NULL and a customer is not an admin user.
+/// Table is owned/migrated by yoye-admin.
+model BookingStatusLog {
+  id        Int           @id @default(autoincrement())
+  bookingId Int
+  changedBy Int
+  status    BookingStatus
+  notes     String?
+  createdAt DateTime      @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  admin   User    @relation(fields: [changedBy], references: [id])
+
+  @@map("booking_status_logs")
+}
+
+/// Admin user — read-only mirror carrying only what the storefront needs to
+/// resolve the non-login "system" audit actor (see lib/system-actor.ts).
+/// Never created or updated from here. Table is owned/migrated by yoye-admin.
+model User {
+  id    Int    @id @default(autoincrement())
+  email String @unique
+
+  statusLogsChanged BookingStatusLog[]
+
+  @@map("users")
 }
 
 /// Ticket-payment notice ("แจ้งยอดโอนค่าบัตร / ร้านจ่ายก่อน") set by the admin.
@@ -260,13 +291,15 @@ model DeepInfoResponse {
   id        Int      @id @default(autoincrement())
   bookingId Int
   fieldId   Int
+  /// 1-based ลำดับรายชื่อ/ใบที่คำตอบนี้เป็นของ (จองมา 3 รายชื่อ → 1, 2, 3).
+  entryIndex Int     @default(1)
   value     String
   createdAt DateTime @default(now())
 
   booking Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   field   DeepInfoField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
-  @@unique([bookingId, fieldId])
+  @@unique([bookingId, fieldId, entryIndex])
   @@map("deep_info_responses")
 }
 

@@ -12,8 +12,17 @@ export interface DeepInfoFieldDTO {
   otherCode: string;
   label: string;
   isRequired: boolean;
-  /** The customer's previously saved answer, if any. */
-  value: string;
+}
+
+/**
+ * One booked name/ticket's worth of answers. A booking for 3 รายชื่อ gets three
+ * of these (entryIndex 1..3), each carrying an answer for every field.
+ */
+export interface DeepInfoEntryDTO {
+  /** 1-based — "รายชื่อที่ 1", "รายชื่อที่ 2", … */
+  entryIndex: number;
+  /** fieldId (as a string key, since JSON object keys are strings) -> answer. */
+  values: Record<string, string>;
 }
 
 export interface ZoneOptionDTO {
@@ -43,7 +52,10 @@ export interface BookingDetailDTO {
   trackingStatus: string;
   note?: string;
   zones: ZoneOptionDTO[];
+  /** Field definitions for this event (the same set repeats for every entry). */
   fields: DeepInfoFieldDTO[];
+  /** Always exactly `quantity` items, blanks included, ordered by entryIndex. */
+  entries: DeepInfoEntryDTO[];
 }
 
 const GENERIC_NOT_FOUND = "ไม่พบข้อมูลการจอง";
@@ -71,7 +83,9 @@ const bookingSelect = {
   notes: true,
   deletedAt: true,
   customer: { select: { lineUserId: true } },
-  deepInfoResponses: { select: { fieldId: true, value: true } },
+  deepInfoResponses: {
+    select: { fieldId: true, entryIndex: true, value: true },
+  },
   bookingItems: {
     select: {
       quantity: true,
@@ -115,9 +129,6 @@ function resolvePoster(ev: BookingRow["event"]): string {
 
 function shape(b: BookingRow): BookingDetailDTO {
   const isForm = b.event.type === "FORM";
-  const responseByField = new Map(
-    b.deepInfoResponses.map((r) => [r.fieldId, r.value]),
-  );
   const round = b.bookingItems.find((i) => i.round)?.round;
   const showTime = round
     ? `${thaiDate.format(round.date)}${round.time ? ` (${round.time} น.)` : ""}`
@@ -133,7 +144,25 @@ function shape(b: BookingRow): BookingDetailDTO {
     ),
   );
   const zone = zoneNames.length > 0 ? zoneNames.join(", ") : isForm ? "รายชื่อ" : "-";
-  const quantity = b.bookingItems.reduce((s, i) => s + i.quantity, 0);
+  const quantity = Math.max(1, b.bookingItems.reduce((s, i) => s + i.quantity, 0));
+
+  // One answer set per booked name/ticket. Entries are always emitted for the
+  // full booked quantity so the form renders every slot, filled or not. Rows
+  // stored beyond the current quantity (e.g. the customer later reduced it) are
+  // ignored here rather than deleted — the admin still sees them.
+  const answersByEntry = new Map<number, Record<string, string>>();
+  for (const r of b.deepInfoResponses) {
+    const bucket = answersByEntry.get(r.entryIndex) ?? {};
+    bucket[String(r.fieldId)] = r.value;
+    answersByEntry.set(r.entryIndex, bucket);
+  }
+  const entries: DeepInfoEntryDTO[] = Array.from(
+    { length: quantity },
+    (_, i) => ({
+      entryIndex: i + 1,
+      values: answersByEntry.get(i + 1) ?? {},
+    }),
+  );
 
   const zones: ZoneOptionDTO[] = isForm
     ? []
@@ -153,7 +182,7 @@ function shape(b: BookingRow): BookingDetailDTO {
     showTime,
     zone,
     eventTypes: isForm ? "form" : "ticket",
-    quantity: Math.max(1, quantity),
+    quantity,
     total: b.netCardPrice,
     serviceFee: b.serviceFee,
     feePerEntry: b.event.feePerEntry ? Number(b.event.feePerEntry) : 0,
@@ -162,10 +191,8 @@ function shape(b: BookingRow): BookingDetailDTO {
     trackingStatus: toTrackingStatus(b.status),
     note: b.notes ?? undefined,
     zones,
-    fields: b.event.deepInfoFields.map((f) => ({
-      ...f,
-      value: responseByField.get(f.id) ?? "",
-    })),
+    fields: b.event.deepInfoFields,
+    entries,
   };
 }
 

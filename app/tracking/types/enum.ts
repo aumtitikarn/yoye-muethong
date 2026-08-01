@@ -1,7 +1,6 @@
 // enum tracking
 
 export enum TrackingStatus {
-  WAIT_QUEUE_APPROVAL = "รอแอดมินอนุมัติคิว",
   BOOKING_CONFIRMED = "จองคิวสำเร็จ",
   WAIT_BOOKING_INFO = "รอกรอกข้อมูลการจอง",
   WAIT_FULL_PAYMENT = "รอชำระค่าบัตร (กรณีฝากจ่าย)",
@@ -26,10 +25,6 @@ type StatusMetadata = {
 };
 
 export const STATUS_METADATA: Record<TrackingStatus, StatusMetadata> = {
-  [TrackingStatus.WAIT_QUEUE_APPROVAL]: {
-    description: "ทางร้านได้รับข้อมูลแล้ว อยู่ระหว่างรอแอดมินตรวจสอบและอนุมัติคิว",
-    colorClass: "bg-amber-100 text-amber-900",
-  },
   [TrackingStatus.BOOKING_CONFIRMED]: {
     description: "ลูกค้าอุ่นใจได้ว่ามีชื่ออยู่ในระบบแล้ว",
     colorClass: "bg-emerald-100 text-emerald-800",
