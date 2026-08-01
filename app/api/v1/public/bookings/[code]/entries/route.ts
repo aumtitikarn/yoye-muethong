@@ -126,7 +126,8 @@ export async function DELETE(
       );
     }
 
-    const unitWord = booking.event.type === "FORM" ? "รายชื่อ" : "ใบ";
+    const isForm = booking.event.type === "FORM";
+    const unitWord = isForm ? "รายชื่อ" : "ใบ";
     const kept = slots.filter((s) => !removeSet.has(s.entryIndex));
 
     // How many units each item keeps, after the removals.
@@ -151,22 +152,28 @@ export async function DELETE(
         }
       }
 
-      // Drop the cancelled slots' answers…
-      await tx.deepInfoResponse.deleteMany({
-        where: { bookingId, entryIndex: { in: [...removeSet] } },
-      });
-
-      // …then close the gaps so the remaining entries stay 1..N. Renumbering in
-      // ascending order only ever moves an entry to a *lower*, already-vacated
-      // index, so the (bookingId, fieldId, entryIndex) unique never collides.
-      for (let i = 0; i < kept.length; i++) {
-        const oldIndex = kept[i].entryIndex;
-        const newIndex = i + 1;
-        if (newIndex === oldIndex) continue;
-        await tx.deepInfoResponse.updateMany({
-          where: { bookingId, entryIndex: oldIndex },
-          data: { entryIndex: newIndex },
+      // Deep-info answers only belong to a specific slot on form events, where
+      // each รายชื่อ is a different person. On ticket events the single answer
+      // set covers the whole booking, so cancelling a ใบ must leave it alone —
+      // otherwise dropping ใบที่ 1 would wipe the booking's only answers.
+      if (isForm) {
+        // Drop the cancelled slots' answers…
+        await tx.deepInfoResponse.deleteMany({
+          where: { bookingId, entryIndex: { in: [...removeSet] } },
         });
+
+        // …then close the gaps so the remaining entries stay 1..N. Renumbering
+        // in ascending order only ever moves an entry to a *lower*, already
+        // vacated index, so (bookingId, fieldId, entryIndex) never collides.
+        for (let i = 0; i < kept.length; i++) {
+          const oldIndex = kept[i].entryIndex;
+          const newIndex = i + 1;
+          if (newIndex === oldIndex) continue;
+          await tx.deepInfoResponse.updateMany({
+            where: { bookingId, entryIndex: oldIndex },
+            data: { entryIndex: newIndex },
+          });
+        }
       }
 
       await tx.bookingStatusLog.create({

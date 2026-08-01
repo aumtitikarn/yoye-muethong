@@ -437,8 +437,13 @@ export interface BookingDetailDTO {
   trackingStatus: string;
   note?: string;
   zones: ZoneOptionDTO[];
-  /** Field definitions for this event (the same set repeats for every entry). */
+  /** Field definitions for this event. */
   fields: DeepInfoFieldDTO[];
+  /**
+   * True when ข้อมูลเชิงลึก is filled in once per booked unit (form events).
+   * Ticket events share one set for the whole booking — only entries[0] is used.
+   */
+  deepInfoPerEntry: boolean;
   /** Always exactly `quantity` items, blanks included, ordered by entryIndex. */
   entries: DeepInfoEntryDTO[];
   /** True while the customer may still cancel individual entries. */

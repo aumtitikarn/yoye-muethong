@@ -55,8 +55,14 @@ export interface BookingDetailDTO {
   trackingStatus: string;
   note?: string;
   zones: ZoneOptionDTO[];
-  /** Field definitions for this event (the same set repeats for every entry). */
+  /** Field definitions for this event. */
   fields: DeepInfoFieldDTO[];
+  /**
+   * True when ข้อมูลเชิงลึก is filled in once per booked unit — form events,
+   * where each รายชื่อ is a different person. Ticket events share one set for
+   * the whole booking, so only `entries[0].values` is used there.
+   */
+  deepInfoPerEntry: boolean;
   /** Always exactly `quantity` items, blanks included, ordered by entryIndex. */
   entries: DeepInfoEntryDTO[];
   /**
@@ -208,6 +214,7 @@ function shape(b: BookingRow): BookingDetailDTO {
     note: b.notes ?? undefined,
     zones,
     fields: b.event.deepInfoFields,
+    deepInfoPerEntry: isForm,
     entries,
     canCancelEntries: canCancelEntries(b.status),
     ticketPaymentMode: b.ticketPaymentMode,

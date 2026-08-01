@@ -87,21 +87,33 @@ export function StepDetails({
 
   const extraFields = detail.fields;
   const entries = detail.entries;
-  const isPerEntry = entries.length > 1;
+  /**
+   * Which slots collect their own ข้อมูลเชิงลึก. Form events collect one set per
+   * รายชื่อ (each is a different person); ticket events share a single set for
+   * the whole booking, so only entry 1 is filled in no matter how many ใบ.
+   * `entries` itself stays the full list of booked units — the cancel picker
+   * still needs every one of them.
+   */
+  const answerEntries = detail.deepInfoPerEntry ? entries : entries.slice(0, 1);
+  const isPerEntry = answerEntries.length > 1;
   const answerKey = (entryIndex: number, fieldId: number) =>
     `${entryIndex}:${fieldId}`;
 
   /**
-   * What the customer calls this slot. For form bookings that's the name they
-   * typed — without it they can't tell which รายชื่อ they are about to cancel.
-   * Falls back to the zone (tickets) or a plain "not filled in yet".
+   * What the customer calls this slot in the cancel picker. On form events that
+   * is the name they typed — without it they can't tell which รายชื่อ they are
+   * about to cancel. Ticket events share one answer set, so an answer says
+   * nothing about a particular ใบ; the zone is the only meaningful label there.
    */
   const entryLabel = (entry: (typeof entries)[number]): string => {
-    for (const f of extraFields) {
-      const v = (entry.values[String(f.id)] ?? "").trim();
-      if (v) return v;
+    if (detail.deepInfoPerEntry) {
+      for (const f of extraFields) {
+        const v = (entry.values[String(f.id)] ?? "").trim();
+        if (v) return v;
+      }
+      return "ยังไม่ได้กรอกข้อมูล";
     }
-    return entry.zoneName ?? "ยังไม่ได้กรอกข้อมูล";
+    return entry.zoneName ?? `${unitWord}ที่ ${entry.entryIndex}`;
   };
 
   const toggleRemove = (entryIndex: number) =>
@@ -236,8 +248,9 @@ export function StepDetails({
     </div>
   );
 
-  // Every required field must be filled for every booked name, not just once.
-  const extraFieldsValid = entries.every((entry) =>
+  // Every required field must be filled for every answer slot — every รายชื่อ
+  // on a form event, or the single shared set on a ticket event.
+  const extraFieldsValid = answerEntries.every((entry) =>
     extraFields.every(
       (f) =>
         !f.isRequired ||
@@ -251,20 +264,20 @@ export function StepDetails({
   // has answers only for entry 1, and those customers must still be able to
   // fill in the remaining names. Each entry locks once it has a saved answer.
   const savedEntries = new Set(
-    entries
+    answerEntries
       .filter((entry) =>
         Object.values(entry.values).some((v) => v.trim().length > 0),
       )
       .map((entry) => entry.entryIndex),
   );
   const hasSavedDeepInfo =
-    extraFields.length > 0 && savedEntries.size === entries.length;
+    extraFields.length > 0 && savedEntries.size === answerEntries.length;
   const isSaving = saveDeepInfo.isPending || saveDeepInfo.isSuccess;
 
   const handleSaveDeepInfo = () => {
     saveDeepInfo.mutate(
       {
-        responses: entries.flatMap((entry) =>
+        responses: answerEntries.flatMap((entry) =>
           extraFields.map((f) => ({
             fieldId: f.id,
             entryIndex: entry.entryIndex,
@@ -596,7 +609,7 @@ export function StepDetails({
           hint={
             extraFields.length > 0
               ? isPerEntry
-                ? `กรอกให้ครบทั้ง ${entries.length} ${unitWord} เพื่อยืนยันการจอง`
+                ? `กรอกให้ครบทั้ง ${answerEntries.length} ${unitWord} เพื่อยืนยันการจอง`
                 : "กรอกข้อมูลให้ครบเพื่อยืนยันการจอง"
               : undefined
           }
@@ -618,7 +631,7 @@ export function StepDetails({
           </div>
         ) : (
           <div className="space-y-4">
-            {entries.map((entry) => {
+            {answerEntries.map((entry) => {
               const body = (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {extraFields.map((field) => {
@@ -673,7 +686,7 @@ export function StepDetails({
                       {unitWord}ที่ {entry.entryIndex}
                     </p>
                     <span className="text-xs text-muted-foreground">
-                      จาก {entries.length} {unitWord}
+                      จาก {answerEntries.length} {unitWord}
                     </span>
                     {savedEntries.has(entry.entryIndex) && (
                       <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
@@ -806,7 +819,7 @@ export function StepDetails({
             {extraFields.length > 0 && (
               <div className="max-h-64 space-y-3 overflow-y-auto border-t border-border/60 pt-2">
                 <p className="font-semibold">ข้อมูลเพิ่มเติม</p>
-                {entries.map((entry) => (
+                {answerEntries.map((entry) => (
                   <div key={entry.entryIndex} className="space-y-1">
                     {isPerEntry && (
                       <p className="text-xs font-bold text-accent">

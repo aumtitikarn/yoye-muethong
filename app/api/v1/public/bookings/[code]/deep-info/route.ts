@@ -143,15 +143,23 @@ export async function POST(
       return NextResponse.json({ message: GENERIC_NOT_FOUND }, { status: 404 });
     }
 
-    // A booking for 3 รายชื่อ has exactly 3 answer slots — reject anything past
-    // that so a crafted payload can't stash rows the UI would never show.
-    const entryCount = Math.max(
+    // Form events collect one answer set per รายชื่อ (each is a different
+    // person). Ticket events share a single set for the whole booking, so
+    // everything collapses onto entry 1 no matter how many ใบ were booked.
+    const isForm = booking.event.type === "FORM";
+    const bookedUnits = Math.max(
       1,
       booking.bookingItems.reduce((s, i) => s + i.quantity, 0),
     );
+    const entryCount = isForm ? bookedUnits : 1;
+
     if (items.some((i) => i.entryIndex > entryCount)) {
       return NextResponse.json(
-        { message: `กรอกข้อมูลได้สูงสุด ${entryCount} รายชื่อตามจำนวนที่จอง` },
+        {
+          message: isForm
+            ? `กรอกข้อมูลได้สูงสุด ${entryCount} รายชื่อตามจำนวนที่จอง`
+            : "งานประเภทบัตรกรอกข้อมูลเพิ่มเติมชุดเดียวต่อการจอง",
+        },
         { status: 400 }
       );
     }
@@ -196,7 +204,7 @@ export async function POST(
       // admin has no way to know they chose ฝากร้าน, so nobody sends the
       // "แจ้งยอดโอนค่าบัตร" notice and the customer is left with no next step.
       // Form events have no ticket cost, so the choice does not apply to them.
-      if (ticketPaymentMode && booking.event.type !== "FORM") {
+      if (ticketPaymentMode && !isForm) {
         await tx.booking.update({
           where: { id: bookingId },
           data: { ticketPaymentMode },

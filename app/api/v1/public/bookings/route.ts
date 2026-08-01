@@ -113,10 +113,12 @@ function isDeepInfoComplete(b: BookingRow): boolean {
     b.event.deepInfoFields.filter((f) => f.isRequired).map((f) => f.id),
   );
   if (requiredIds.size === 0) return true;
-  const entryCount = Math.max(
-    1,
-    b.bookingItems.reduce((s, i) => s + i.quantity, 0),
-  );
+  // Only form events collect one set per booked name; ticket events share a
+  // single set for the whole booking.
+  const entryCount =
+    b.event.type === "FORM"
+      ? Math.max(1, b.bookingItems.reduce((s, i) => s + i.quantity, 0))
+      : 1;
   const filled = b.deepInfoResponses.filter((r) =>
     requiredIds.has(r.fieldId),
   ).length;

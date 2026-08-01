@@ -62,9 +62,14 @@ function BookingDetailContent() {
   // booking for 3 รายชื่อ isn't finished after filling in just the first one,
   // but an optional field left blank must not hold the step open forever.
   const requiredFields = detail.fields.filter((f) => f.isRequired);
+  // Ticket events share one answer set for the whole booking, so only the first
+  // slot is checked there; form events need every รายชื่อ filled in.
+  const answerEntries = detail.deepInfoPerEntry
+    ? detail.entries
+    : detail.entries.slice(0, 1);
   const detailsDone =
     requiredFields.length === 0 ||
-    detail.entries.every((entry) =>
+    answerEntries.every((entry) =>
       requiredFields.every((f) => (entry.values[String(f.id)] ?? "").trim()),
     );
 
