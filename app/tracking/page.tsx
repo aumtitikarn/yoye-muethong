@@ -563,9 +563,22 @@ export default function TrackingPage() {
                         ? `/payments/ticket/${row.bookingId}`
                         : "/bookings";
                   return (
-                    <div
+                    // Whole card opens the booking, mirroring the desktop table
+                      // row. The action buttons below stop propagation so a tap
+                      // on them doesn't also navigate.
+                      <div
                       key={row.bookingId}
-                      className="rounded-2xl border border-border/40 bg-white/90 p-4 shadow-sm"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`ดูรายละเอียดการจอง ${row.bookingId}`}
+                      onClick={() => router.push(`/bookings/${row.bookingId}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          router.push(`/bookings/${row.bookingId}`);
+                        }
+                      }}
+                      className="cursor-pointer rounded-2xl border border-border/40 bg-white/90 p-4 shadow-sm transition-colors active:bg-muted/60"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -596,11 +609,12 @@ export default function TrackingPage() {
                             </p>
                           )}
                       </div>
+                      <div onClick={(e) => e.stopPropagation()}>
                       {canFillDeepInfo && (
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="mt-3 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
+                          className="mt-2 w-full gap-1.5 btn-glow-border rounded-xl font-semibold text-foreground"
                           asChild
                         >
                           <Link href={`/bookings/${row.bookingId}?edit=1`}>
@@ -648,6 +662,7 @@ export default function TrackingPage() {
                           ยกเลิกการจอง
                         </Button>
                       )}
+                      </div>
                     </div>
                   );
                 })}
