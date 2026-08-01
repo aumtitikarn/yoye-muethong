@@ -560,3 +560,66 @@ export async function linkLineAccount(
     };
   }
 }
+
+// ── Reviews (public /reviews page) ─────────────────────────────────
+
+export interface ReviewDTO {
+  id: number;
+  eventName: string;
+  /** null = ลูกค้าไม่เปิดเผยชื่อ */
+  customerName: string | null;
+  imageUrl: string;
+  content: string | null;
+  /** ISO date string. */
+  reviewDate: string;
+}
+
+export interface ReviewListResult {
+  data: ReviewDTO[];
+  total: number;
+  totalPages: number;
+}
+
+export interface ReviewStats {
+  totalVisitors: number;
+  totalBookings: number;
+  successPresses: number;
+}
+
+/** Published customer reviews, paginated + searchable by event/customer name. */
+export async function fetchReviews(
+  params: { search?: string; page?: number; pageSize?: number },
+  signal?: AbortSignal
+): Promise<ReviewListResult> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+
+  const res = await fetch(`${API_BASE_URL}/public/reviews?${query.toString()}`, {
+    signal,
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`โหลดรีวิวไม่สำเร็จ (${res.status})`);
+  const json = (await res.json()) as {
+    data?: ReviewDTO[];
+    pagination?: { total: number; totalPages: number };
+  };
+  return {
+    data: json.data ?? [],
+    total: json.pagination?.total ?? 0,
+    totalPages: json.pagination?.totalPages ?? 1,
+  };
+}
+
+/** Headline numbers for the reviews page (visitors / bookings / presses). */
+export async function fetchReviewStats(
+  signal?: AbortSignal
+): Promise<ReviewStats> {
+  const res = await fetch(`${API_BASE_URL}/public/reviews/stats`, { signal });
+  if (!res.ok) throw new Error(`โหลดสถิติไม่สำเร็จ (${res.status})`);
+  const json = (await res.json()) as { data?: ReviewStats };
+  return (
+    json.data ?? { totalVisitors: 0, totalBookings: 0, successPresses: 0 }
+  );
+}

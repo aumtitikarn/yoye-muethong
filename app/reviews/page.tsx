@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Loading from "@/components/Loading";
+import { useReviewStatsQuery, useReviewsQuery } from "@/lib/queries";
+import type { ReviewDTO } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,44 +16,43 @@ import {
   X,
 } from "lucide-react";
 
-type Review = {
-  id: number;
-  eventName: string;
-  customerName: string;
-  image: string;
-  date: string;
-};
-
-const mockReviews: Review[] = Array.from({ length: 24 }, (_, i) => ({
-  id: i + 1,
-  eventName: `Concert ${i + 1}`,
-  customerName: `Customer ${i + 1}`,
-  image: `/con.jpeg`,
-  date: `${15 + (i % 15)} ม.ค. 2569`,
-}));
-
 const ITEMS_PER_PAGE = 12;
+
+const thaiDate = new Intl.DateTimeFormat("th-TH-u-ca-buddhist", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+const formatReviewDate = (iso: string) => thaiDate.format(new Date(iso));
+
+/** Debounce the search box so typing doesn't fire a request per keystroke. */
+function useDebounced<T>(value: T, delay = 350): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
 export default function ReviewsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedReview, setSelectedReview] = useState<Review | null>(null);
+  const [selectedReview, setSelectedReview] = useState<ReviewDTO | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
-  const filteredReviews = useMemo(() => {
-    return mockReviews.filter(
-      (review) =>
-        review.eventName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        review.customerName.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-  }, [searchQuery]);
+  const debouncedSearch = useDebounced(searchQuery);
+  const reviewsQuery = useReviewsQuery({
+    search: debouncedSearch.trim() || undefined,
+    page: currentPage,
+    pageSize: ITEMS_PER_PAGE,
+  });
+  const statsQuery = useReviewStatsQuery();
 
-  const totalPages = Math.ceil(filteredReviews.length / ITEMS_PER_PAGE);
-  const paginatedReviews = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredReviews.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredReviews, currentPage]);
+  const paginatedReviews = reviewsQuery.data?.data ?? [];
+  const totalPages = reviewsQuery.data?.totalPages ?? 1;
+  const isLoading = reviewsQuery.isPending;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -61,34 +62,32 @@ export default function ReviewsPage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, []);
-
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const statValue = (value?: number) =>
+    value === undefined ? "—" : value.toLocaleString("th-TH");
 
   const stats = [
     {
       icon: Users,
       label: "ผู้เข้าชมทั้งหมด",
-      value: "12,543",
+      value: statValue(statsQuery.data?.totalVisitors),
       color: "text-primary",
       bg: "bg-primary/10",
     },
     {
       icon: Calendar,
       label: "จำนวนการจองคิว",
-      value: "3,892",
+      value: statValue(statsQuery.data?.totalBookings),
       color: "text-amber-600",
       bg: "bg-amber-100",
     },
     {
       icon: CheckCircle2,
       label: "กดบัตรสำเร็จ",
-      value: "3,654",
+      value: statValue(statsQuery.data?.successPresses),
       color: "text-emerald-600",
       bg: "bg-emerald-100",
     },
@@ -163,8 +162,9 @@ export default function ReviewsPage() {
               <Card className="overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-2 pt-0">
                 <div className="relative aspect-[4/3] overflow-hidden">
                   <img
-                    src={review.image}
+                    src={review.imageUrl}
                     alt={review.eventName}
+                    referrerPolicy="no-referrer"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -178,12 +178,14 @@ export default function ReviewsPage() {
                   <h3 className="font-bold text-base line-clamp-1">
                     {review.eventName}
                   </h3>
-                  <p className="text-xs text-muted-foreground line-clamp-1">
-                    {review.customerName}
-                  </p>
+                  {review.customerName && (
+                    <p className="text-xs text-muted-foreground line-clamp-1">
+                      {review.customerName}
+                    </p>
+                  )}
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-xs text-muted-foreground">
-                      {review.date}
+                      {formatReviewDate(review.reviewDate)}
                     </span>
                   </div>
                 </div>
@@ -192,9 +194,19 @@ export default function ReviewsPage() {
           ))}
         </div>
 
-        {filteredReviews.length === 0 && (
+        {!isLoading && paginatedReviews.length === 0 && (
           <div className="text-center py-16">
-            <p className="text-muted-foreground">ไม่พบรีวิวที่ค้นหา</p>
+            <p className="text-muted-foreground">
+              {debouncedSearch.trim() ? "ไม่พบรีวิวที่ค้นหา" : "ยังไม่มีรีวิว"}
+            </p>
+          </div>
+        )}
+
+        {reviewsQuery.isError && (
+          <div className="text-center py-16">
+            <p className="text-muted-foreground">
+              โหลดรีวิวไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
+            </p>
           </div>
         )}
 
@@ -255,8 +267,9 @@ export default function ReviewsPage() {
             <div className="grid md:grid-cols-2">
               <div className="relative aspect-square md:aspect-auto">
                 <img
-                  src={selectedReview.image}
+                  src={selectedReview.imageUrl}
                   alt={selectedReview.eventName}
+                  referrerPolicy="no-referrer"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -265,19 +278,22 @@ export default function ReviewsPage() {
                   <h2 className="text-2xl font-bold">
                     {selectedReview.eventName}
                   </h2>
-                  <p className="text-muted-foreground">
-                    {selectedReview.customerName}
-                  </p>
+                  {selectedReview.customerName && (
+                    <p className="text-muted-foreground">
+                      {selectedReview.customerName}
+                    </p>
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  วันที่: {selectedReview.date}
+                  วันที่: {formatReviewDate(selectedReview.reviewDate)}
                 </p>
-                <div className="pt-4 border-t">
-                  <p className="text-sm leading-relaxed">
-                    ประสบการณ์ที่ดีมาก ทีมงานมืออาชีพ กดบัตรได้รวดเร็วและแม่นยำ
-                    ขอบคุณสำหรับบริการที่ยอดเยี่ยม แนะนำเลยค่ะ! 🎉
-                  </p>
-                </div>
+                {selectedReview.content && (
+                  <div className="pt-4 border-t">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {selectedReview.content}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

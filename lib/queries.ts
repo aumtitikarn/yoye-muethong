@@ -6,6 +6,8 @@ import {
   fetchServiceFeeInfo,
   fetchTicketFeeInfo,
   fetchRefundInfo,
+  fetchReviews,
+  fetchReviewStats,
   saveDeepInfoResponses,
   submitRefundInfo,
   PaymentAuthError,
@@ -123,5 +125,39 @@ export function useSubmitRefundMutation(bookingCode: string | undefined) {
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
       queryClient.invalidateQueries({ queryKey: ["refund-info", bookingCode] });
     },
+  });
+}
+
+// Reviews and their headline numbers are admin-curated and change rarely, so
+// they get a much longer client cache than the app-wide 30s default: pages
+// already visited render instantly and revisiting the tab doesn't refetch.
+const REVIEWS_STALE_MS = 5 * 60_000;
+const REVIEWS_GC_MS = 30 * 60_000;
+
+/** Server state: published customer reviews for the public /reviews page. */
+export function useReviewsQuery(params: {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  return useQuery({
+    queryKey: ["reviews", params],
+    queryFn: ({ signal }) => fetchReviews(params, signal),
+    // Keep the previous page on screen while the next one loads.
+    placeholderData: (prev) => prev,
+    staleTime: REVIEWS_STALE_MS,
+    gcTime: REVIEWS_GC_MS,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Server state: headline stats shown above the review grid. */
+export function useReviewStatsQuery() {
+  return useQuery({
+    queryKey: ["review-stats"],
+    queryFn: ({ signal }) => fetchReviewStats(signal),
+    staleTime: REVIEWS_STALE_MS,
+    gcTime: REVIEWS_GC_MS,
+    refetchOnWindowFocus: false,
   });
 }

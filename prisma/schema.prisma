@@ -73,12 +73,12 @@ enum PaymentStatus {
 }
 
 model Customer {
-  id         Int     @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   fullName   String
   email      String?
   phone      String?
   // LINE Messaging API push target (Uxxxx), captured from LINE Login on the storefront.
-  lineUserId String? @unique
+  lineUserId String?  @unique
   // Required by the DB (NOT NULL). Prisma must manage these or inserts hit P2011.
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -110,12 +110,12 @@ model Booking {
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
 
-  customer          Customer           @relation(fields: [customerId], references: [id])
-  event             Event              @relation(fields: [eventId], references: [id])
-  bookingItems      BookingItem[]
-  deepInfoResponses DeepInfoResponse[]
-  fulfillment       Fulfillment?
-  refundRequests    RefundRequest[]
+  customer              Customer               @relation(fields: [customerId], references: [id])
+  event                 Event                  @relation(fields: [eventId], references: [id])
+  bookingItems          BookingItem[]
+  deepInfoResponses     DeepInfoResponse[]
+  fulfillment           Fulfillment?
+  refundRequests        RefundRequest[]
   ticketPaymentRequests TicketPaymentRequest[]
 
   @@map("bookings")
@@ -203,11 +203,11 @@ model FulfillmentLog {
 
 // Per-round/zone line items on a booking (TICKET events). Read-only here.
 model BookingItem {
-  id        Int    @id @default(autoincrement())
+  id        Int  @id @default(autoincrement())
   bookingId Int
   roundId   Int?
   zoneId    Int?
-  quantity  Int    @default(1)
+  quantity  Int  @default(1)
 
   booking Booking    @relation(fields: [bookingId], references: [id])
   round   ShowRound? @relation(fields: [roundId], references: [id])
@@ -294,4 +294,37 @@ model Zone {
   round   ShowRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
 
   bookingItems BookingItem[]
+}
+
+// ── Reviews + visitor counter (TASK-20260731-2347) ──────────────────────────
+// Mirrors yoye-admin's `Review` / `SiteVisitor`. Admin owns the CRUD; the
+// storefront only reads reviews and upserts its own visitor rows.
+
+model Review {
+  id           Int      @id @default(autoincrement())
+  eventName    String
+  customerName String?
+  imageUrl     String
+  content      String?
+  reviewDate   DateTime
+  isPublished  Boolean  @default(true)
+
+  createdAt DateTime  @default(now())
+  createdBy String?
+  updatedAt DateTime  @updatedAt
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([deletedAt, isPublished, reviewDate])
+  @@map("reviews")
+}
+
+model SiteVisitor {
+  id          Int      @id @default(autoincrement())
+  visitorId   String   @unique
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@map("site_visitors")
 }

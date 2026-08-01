@@ -3,6 +3,7 @@ import "./globals.css";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar/navbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import VisitTracker from "@/components/visit-tracker";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({
       <body className="antialiased">
         <Providers>
           <TooltipProvider>
+            <VisitTracker />
             <Navbar />
             {children}
             <Footer />

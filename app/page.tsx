@@ -29,6 +29,23 @@ import {
 } from "lucide-react";
 import Loading from "@/components/Loading";
 import { useRouter } from "next/navigation";
+import { useReviewStatsQuery } from "@/lib/queries";
+
+const compactNumber = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+/**
+ * Visitor count for the hero cards. Small numbers read better in full
+ * ("1,240"), large ones in compact form ("45.8K"). undefined = still loading.
+ */
+function formatVisitors(value?: number): string {
+  if (value === undefined) return "—";
+  return value >= 10_000
+    ? compactNumber.format(value)
+    : value.toLocaleString("th-TH");
+}
 
 const cards = [
   {
@@ -42,7 +59,9 @@ const cards = [
   {
     id: 2,
     title: "เข้าชมเว็บไซต์ทั้งหมด",
-    stats: "45.8K",
+    // Live value — resolved from the site stats query when rendering.
+    stats: "",
+    live: "visitors" as const,
     icon: Users,
     iconBg: "bg-blue-100",
     iconColor: "text-blue-500",
@@ -69,10 +88,18 @@ const partners = [
 ];
 
 function RotatingCards() {
+  // Shared query — both instances of this component (mobile + desktop) and the
+  // /reviews page read the same cache entry, so this costs one request.
+  const { data: stats } = useReviewStatsQuery();
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
       {cards.slice(0, 3).map((card, i) => {
         const Icon = card.icon;
+        const value =
+          card.live === "visitors"
+            ? formatVisitors(stats?.totalVisitors)
+            : card.stats;
 
         return (
           <motion.div
@@ -112,7 +139,7 @@ function RotatingCards() {
                   transition={{ repeat: Infinity, duration: 4 }}
                   className="text-4xl md:text-5xl font-black text-orange-400 tracking-tighter"
                 >
-                  {card.stats}
+                  {value}
                 </motion.h2>
               </div>
             </div>
