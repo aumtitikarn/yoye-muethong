@@ -35,7 +35,9 @@ const STATUS_MAP: Record<BookingStatus, TrackingStatus> = {
   // WAITING_SERVICE_FEE_VERIFY คือหลังบิลถูกสร้างแล้ว)
   WAITING_SERVICE_FEE: TrackingStatus.WAIT_ADMIN_SUMMARY,
   WAITING_SERVICE_FEE_VERIFY: TrackingStatus.WAIT_SERVICE_FEE,
-  SERVICE_FEE_PAID: TrackingStatus.PREPARE_PRESS,
+  // ชำระค่ากดคือขั้นตอนสุดท้ายที่ลูกค้าต้องทำ — งานกดบัตรจบไปนานแล้ว
+  // (เดิม map ไป "เตรียมตัวกดบัตร" ซึ่งย้อนหลังและทำให้ลูกค้าสับสน)
+  SERVICE_FEE_PAID: TrackingStatus.DONE,
   DEPOSIT_PENDING: TrackingStatus.BOOKING_CONFIRMED,
   DEPOSIT_USED: TrackingStatus.DONE,
   DEPOSIT_FORFEITED: TrackingStatus.CANCEL,
