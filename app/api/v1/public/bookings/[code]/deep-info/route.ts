@@ -127,7 +127,11 @@ export async function POST(
         customer: { select: { lineUserId: true } },
         bookingItems: { select: { quantity: true } },
         event: {
-          select: { type: true, _count: { select: { deepInfoFields: true } } },
+          select: {
+            type: true,
+            // Only required fields decide "ครบแล้ว" — see isComplete below.
+            deepInfoFields: { select: { id: true, isRequired: true } },
+          },
         },
       },
     });
@@ -232,15 +236,22 @@ export async function POST(
         }
       }
 
-      // Once every field of every booked name has an answer, flag the booking
-      // as "กรอกข้อมูลจองแล้ว" so the admin sees it in the bookings list
+      // Once every REQUIRED field of every booked name has an answer, flag the
+      // booking as "กรอกข้อมูลจองแล้ว" so the admin sees it in the bookings list
       // instead of opening each booking to check. Counted from the DB inside
-      // the transaction (not from the payload) so a partial submit can't
-      // mark it complete. Blank answers are deleted, never stored.
-      const fieldCount = booking.event._count.deepInfoFields;
-      if (fieldCount === 0) return;
-      const filled = await tx.deepInfoResponse.count({ where: { bookingId } });
-      if (filled < fieldCount * entryCount) return;
+      // the transaction (not from the payload) so a partial submit can't mark
+      // it complete. Blank answers are deleted, never stored.
+      //
+      // Optional fields are excluded deliberately: they are legitimately left
+      // blank, so counting them would leave such bookings stuck forever.
+      const requiredFieldIds = booking.event.deepInfoFields
+        .filter((f) => f.isRequired)
+        .map((f) => f.id);
+      if (requiredFieldIds.length === 0) return;
+      const filled = await tx.deepInfoResponse.count({
+        where: { bookingId, fieldId: { in: requiredFieldIds } },
+      });
+      if (filled < requiredFieldIds.length * entryCount) return;
 
       const res = await tx.booking.updateMany({
         where: { id: bookingId, status: { in: AWAITING_INFO_STATUSES } },

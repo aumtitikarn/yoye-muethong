@@ -37,7 +37,7 @@ const bookingSelect = {
       name: true,
       type: true,
       eventDate: true,
-      deepInfoFields: { select: { id: true } },
+      deepInfoFields: { select: { id: true, isRequired: true } },
     },
   },
   bookingItems: {
@@ -99,19 +99,28 @@ function toDTO(b: BookingRow): TrackingRowDTO {
 }
 
 /**
- * True only when every booked name/ticket has an answer for every field — a
- * booking for 3 รายชื่อ with only the first one filled still needs attention,
- * so the tracking page keeps showing "กรอกข้อมูลการจองเพิ่มเติม".
- * Blank answers are deleted rather than stored, so counting rows is enough.
+ * True only when every booked name/ticket has an answer for every REQUIRED
+ * field — a booking for 3 รายชื่อ with only the first one filled still needs
+ * attention, so the tracking page keeps showing "กรอกข้อมูลการจองเพิ่มเติม".
+ *
+ * Optional fields are excluded: they are legitimately left blank, and since
+ * blank answers are deleted rather than stored, counting them would make such
+ * bookings look permanently incomplete. Mirrors the rule in the deep-info save
+ * route that decides BOOKING_INFO_SUBMITTED.
  */
 function isDeepInfoComplete(b: BookingRow): boolean {
-  const fieldCount = b.event.deepInfoFields.length;
-  if (fieldCount === 0) return true;
+  const requiredIds = new Set(
+    b.event.deepInfoFields.filter((f) => f.isRequired).map((f) => f.id),
+  );
+  if (requiredIds.size === 0) return true;
   const entryCount = Math.max(
     1,
     b.bookingItems.reduce((s, i) => s + i.quantity, 0),
   );
-  return b.deepInfoResponses.length >= fieldCount * entryCount;
+  const filled = b.deepInfoResponses.filter((r) =>
+    requiredIds.has(r.fieldId),
+  ).length;
+  return filled >= requiredIds.size * entryCount;
 }
 
 // GET /api/v1/public/bookings

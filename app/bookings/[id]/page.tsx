@@ -58,12 +58,14 @@ function BookingDetailContent() {
   const TypeIcon = isFormType ? ClipboardList : Ticket;
   const typeLabel = isFormType ? "ฟอร์มรายชื่อ" : "บัตรคอนเสิร์ต";
 
-  // Done only when every booked name has an answer for every field — a booking
-  // for 3 รายชื่อ isn't finished after filling in just the first one.
+  // Done only when every booked name has an answer for every REQUIRED field — a
+  // booking for 3 รายชื่อ isn't finished after filling in just the first one,
+  // but an optional field left blank must not hold the step open forever.
+  const requiredFields = detail.fields.filter((f) => f.isRequired);
   const detailsDone =
-    detail.fields.length === 0 ||
+    requiredFields.length === 0 ||
     detail.entries.every((entry) =>
-      detail.fields.every((f) => (entry.values[String(f.id)] ?? "").trim()),
+      requiredFields.every((f) => (entry.values[String(f.id)] ?? "").trim()),
     );
 
   const steps: WizardStep[] = [
