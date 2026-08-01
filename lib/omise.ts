@@ -46,6 +46,8 @@ export interface OmiseChargeResult {
   promptpayQrUri: string | null;
   failureCode: string | null;
   failureMessage: string | null;
+  /** When Omise settled the charge (ISO string), null while unpaid. */
+  paidAt: string | null;
   /** Arbitrary key/value data we attached at charge creation. */
   metadata: Record<string, string>;
 }
@@ -59,6 +61,7 @@ type OmiseChargeApi = {
   authorize_uri?: string | null;
   failure_code?: string | null;
   failure_message?: string | null;
+  paid_at?: string | null;
   metadata?: Record<string, string> | null;
   source?: {
     scannable_code?: { image?: { download_uri?: string | null } | null } | null;
@@ -76,6 +79,7 @@ function normaliseCharge(c: OmiseChargeApi): OmiseChargeResult {
     promptpayQrUri: c.source?.scannable_code?.image?.download_uri ?? null,
     failureCode: c.failure_code ?? null,
     failureMessage: c.failure_message ?? null,
+    paidAt: c.paid_at ?? null,
     metadata: c.metadata ?? {},
   };
 }

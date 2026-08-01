@@ -79,6 +79,27 @@ enum PaymentStatus {
   REFUNDED
 }
 
+/// ประเภทการชำระเงินที่บันทึกลง payment_slips (มัดจำ / ค่าบัตร / ค่ากด).
+/// Mirrors yoye-admin — the admin's "สลิปและการเงิน" page groups by this.
+enum PaymentSlipType {
+  DEPOSIT_PAID
+  CARD_PAID
+  SERVICE_PAID
+}
+
+enum PaymentSlipStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+/// MANUAL_TRANSFER = สลิปโอนที่แอดมินตรวจเอง, OMISE = ชำระผ่าน gateway
+/// (ยืนยันอัตโนมัติ ไม่มีรูปสลิป).
+enum PaymentSlipMethod {
+  MANUAL_TRANSFER
+  OMISE
+}
+
 model Customer {
   id         Int      @id @default(autoincrement())
   fullName   String
@@ -124,11 +145,56 @@ model Booking {
   bookingItems          BookingItem[]
   deepInfoResponses     DeepInfoResponse[]
   fulfillment           Fulfillment?
+  paymentSlips          PaymentSlip[]
   refundRequests        RefundRequest[]
   statusLogs            BookingStatusLog[]
   ticketPaymentRequests TicketPaymentRequest[]
 
   @@map("bookings")
+}
+
+/// บันทึกการชำระเงินหนึ่งรายการ (มัดจำ / ค่าบัตร / ค่ากด) — ตารางที่หน้า
+/// /payments ของ yoye-admin อ่าน. Flow เดิมคือแอดมินอัปโหลดสลิปแล้วตรวจเอง
+/// (MANUAL_TRANSFER, imageUrl มีรูป); การชำระผ่าน Omise จากหน้าร้านจะบันทึกที่นี่
+/// เป็น OMISE + VERIFIED อัตโนมัติ โดยไม่มีรูปสลิป แต่มี omiseChargeId + paidAt แทน.
+/// Table is owned/migrated by yoye-admin (migration 20260728161800_add_omise_integration).
+model PaymentSlip {
+  id            Int               @id @default(autoincrement())
+  bookingId     Int
+  reviewerId    Int?
+  type          PaymentSlipType
+  status        PaymentSlipStatus @default(PENDING)
+  paymentMethod PaymentSlipMethod @default(MANUAL_TRANSFER)
+  omiseChargeId String?           @unique
+  systemAmount  Float
+  slipAmount    Float
+  imageUrl      String?
+  paidAt        DateTime?
+  reviewedAt    DateTime?
+  notes         String?
+  createdAt     DateTime          @default(now())
+
+  booking    Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reviewer   User?            @relation("reviewer", fields: [reviewerId], references: [id])
+  statusLogs PaymentSlipLog[]
+
+  @@map("payment_slips")
+}
+
+/// Audit trail ของสถานะสลิป — เขียนโดยหน้าร้านตอน Omise ยืนยันการชำระ
+/// (ใช้ "system" actor เพราะ changedById เป็น NOT NULL). Owned by yoye-admin.
+model PaymentSlipLog {
+  id            Int               @id @default(autoincrement())
+  paymentSlipId Int
+  changedById   Int
+  status        PaymentSlipStatus
+  note          String?
+  createdAt     DateTime          @default(now())
+
+  paymentSlip PaymentSlip @relation(fields: [paymentSlipId], references: [id], onDelete: Cascade)
+  changedBy   User        @relation("paymentSlipLogs", fields: [changedById], references: [id])
+
+  @@map("payment_slip_logs")
 }
 
 /// Audit trail of booking status changes, read by the admin's booking timeline.
@@ -158,6 +224,8 @@ model User {
   email String @unique
 
   statusLogsChanged BookingStatusLog[]
+  paymentSlipsReviewed PaymentSlip[]    @relation("reviewer")
+  paymentSlipLogs      PaymentSlipLog[] @relation("paymentSlipLogs")
 
   @@map("users")
 }

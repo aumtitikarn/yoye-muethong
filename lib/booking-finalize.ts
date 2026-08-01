@@ -6,6 +6,7 @@ import {
   buildTicketPaymentReviewMessage,
   pushLineTextMessage,
 } from "@/lib/line-push";
+import { recordOmisePayment } from "@/lib/payment-record";
 
 // Booking payload we stash in the Omise charge metadata at charge creation, so
 // the paid charge carries everything needed to create the booking.
@@ -57,12 +58,22 @@ export async function finalizeChargeToBooking(
     return { ok: false, reason: "bad_metadata" };
   }
 
-  // Idempotency: already created?
+  // Idempotency: already created? The payment record is still (re)written — the
+  // upsert is keyed on the charge id, so this heals a booking whose slip write
+  // failed the first time round without ever duplicating it.
   const existing = await prisma.booking.findUnique({
     where: { bookingCode },
     select: { id: true },
   });
-  if (existing) return { ok: true, bookingCode, created: false };
+  if (existing) {
+    await recordOmisePayment({
+      bookingId: existing.id,
+      type: "DEPOSIT_PAID",
+      charge,
+      systemAmountBaht: depositPaid,
+    });
+    return { ok: true, bookingCode, created: false };
+  }
 
   const items =
     payload.type === "TICKET" && payload.items?.length
@@ -73,9 +84,10 @@ export async function finalizeChargeToBooking(
         }))
       : [{ roundId: null, zoneId: null, quantity: payload.count ?? 1 }];
 
+  let bookingId: number;
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.booking.create({
+    bookingId = await prisma.$transaction(async (tx) => {
+      const created = await tx.booking.create({
         data: {
           bookingCode,
           eventId,
@@ -90,6 +102,7 @@ export async function finalizeChargeToBooking(
           notes: payload.notes ?? undefined,
           bookingItems: { create: items },
         },
+        select: { id: true },
       });
       // Persist the customer's contact phone collected at booking time.
       if (payload.phone) {
@@ -98,6 +111,7 @@ export async function finalizeChargeToBooking(
           data: { phone: payload.phone },
         });
       }
+      return created.id;
     });
   } catch (err) {
     // Lost a race with the webhook/confirm creating the same bookingCode.
@@ -109,6 +123,15 @@ export async function finalizeChargeToBooking(
     }
     throw err;
   }
+
+  // Ledger row for /payments (ประเภท "มัดจำ"). Best-effort — the booking itself
+  // is already committed above.
+  await recordOmisePayment({
+    bookingId,
+    type: "DEPOSIT_PAID",
+    charge,
+    systemAmountBaht: depositPaid,
+  });
 
   // First (and only) creator notifies the customer that the queue is confirmed.
   // Best-effort — a LINE failure must not fail the booking, and it only runs on
@@ -188,8 +211,17 @@ export async function finalizeServiceFeeCharge(
   });
   if (!booking) return { ok: false, reason: "bad_metadata" };
 
-  // Already applied by a concurrent webhook/confirm → no-op.
+  // Already applied by a concurrent webhook/confirm → the booking is settled, but
+  // still (re)write the ledger row: the upsert is keyed on the charge id, so a
+  // slip that failed to write on the first pass heals here instead of leaving
+  // the payment invisible in /payments.
   if (booking.status === "SERVICE_FEE_PAID" || booking.status === "COMPLETED") {
+    await recordOmisePayment({
+      bookingId: booking.id,
+      type: "SERVICE_PAID",
+      charge,
+      systemAmountBaht: amountBaht,
+    });
     return { ok: true, bookingCode, created: false };
   }
 
@@ -204,6 +236,14 @@ export async function finalizeServiceFeeCharge(
       serviceFee: amountBaht,
       totalPaid: { increment: amountBaht },
     },
+  });
+
+  // Ledger row for /payments (ประเภท "ค่ากด/ค่าบริการ").
+  await recordOmisePayment({
+    bookingId: booking.id,
+    type: "SERVICE_PAID",
+    charge,
+    systemAmountBaht: amountBaht,
   });
 
   return { ok: true, bookingCode, created: res.count > 0 };
@@ -246,8 +286,16 @@ export async function finalizeTicketFeeCharge(
   });
   if (!booking) return { ok: false, reason: "bad_metadata" };
 
-  // Already applied by a concurrent webhook/confirm → no-op.
+  // Already applied by a concurrent webhook/confirm → the booking is settled, but
+  // still (re)write the ledger row (idempotent upsert on the charge id) so a slip
+  // that failed to write on the first pass heals instead of staying invisible.
   if (booking.status === "CONFIRMING_TICKET" || booking.status === "COMPLETED") {
+    await recordOmisePayment({
+      bookingId: booking.id,
+      type: "CARD_PAID",
+      charge,
+      systemAmountBaht: amountBaht,
+    });
     return { ok: true, bookingCode, created: false };
   }
 
@@ -261,6 +309,14 @@ export async function finalizeTicketFeeCharge(
       netCardPrice: amountBaht,
       totalPaid: { increment: amountBaht },
     },
+  });
+
+  // Ledger row for /payments (ประเภท "ค่าบัตร/สินค้า").
+  await recordOmisePayment({
+    bookingId: booking.id,
+    type: "CARD_PAID",
+    charge,
+    systemAmountBaht: amountBaht,
   });
 
   // Only the first (genuine) settler notifies, so a webhook + client-confirm race

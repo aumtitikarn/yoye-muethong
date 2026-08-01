@@ -3,6 +3,7 @@ import { retrieveCharge } from "@/lib/omise";
 import {
   finalizeChargeToBooking,
   finalizeServiceFeeCharge,
+  finalizeTicketFeeCharge,
 } from "@/lib/booking-finalize";
 
 export const runtime = "nodejs";
@@ -36,17 +37,26 @@ export async function POST(req: NextRequest) {
   try {
     const charge = await retrieveCharge(objectId);
     if (charge.paid && charge.status === "successful") {
-      // Route by the metadata we set at charge creation: service-fee charges
-      // settle an existing booking; everything else is a deposit → new booking.
-      const isServiceFee = charge.metadata.kind === "service_fee";
-      const result = isServiceFee
-        ? await finalizeServiceFeeCharge(charge.id)
-        : await finalizeChargeToBooking(charge.id);
+      // Route by the `kind` metadata we set at charge creation: ค่ากด and ค่าบัตร
+      // settle an existing booking; a charge with no `kind` is the deposit paid
+      // at checkout → it creates the booking. Each finalizer also writes the
+      // PaymentSlip row the admin's /payments page lists.
+      const kind = charge.metadata.kind;
+      const result =
+        kind === "service_fee"
+          ? await finalizeServiceFeeCharge(charge.id)
+          : kind === "ticket_fee"
+            ? await finalizeTicketFeeCharge(charge.id)
+            : await finalizeChargeToBooking(charge.id);
       if (result.ok) {
         console.info(
           `omise webhook: charge ${charge.id} paid → ` +
-            `${isServiceFee ? "service-fee" : "booking"} ${result.bookingCode}` +
+            `${kind ?? "deposit"} ${result.bookingCode}` +
             (result.created ? " (applied)" : " (already settled)")
+        );
+      } else {
+        console.warn(
+          `omise webhook: charge ${charge.id} (kind=${kind ?? "deposit"}) not applied — ${result.reason}`
         );
       }
     } else if (charge.status === "failed" || charge.status === "expired") {
