@@ -1,0 +1,27 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # `.env` is exposed to the build (not baked into a layer) so Next.js can
+      # inline the NEXT_PUBLIC_* values into the client bundle.
+      secrets:
+        - dotenv
+    image: yoye-muethong:latest
+    container_name: yoye-muethong
+    restart: unless-stopped
+    # Runtime configuration: DATABASE_URL, JWT_SECRET, LINE_*, OMISE_* …
+    # The database itself is external (see DATABASE_URL), so there is no db
+    # service here.
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "${PORT:-3000}:3000"
+
+secrets:
+  dotenv:
+    file: .env
