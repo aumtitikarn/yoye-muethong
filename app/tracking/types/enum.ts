@@ -3,6 +3,7 @@
 export enum TrackingStatus {
   BOOKING_CONFIRMED = "จองคิวสำเร็จ",
   WAIT_BOOKING_INFO = "รอกรอกข้อมูลการจอง",
+  INFO_SUBMITTED = "กรอกข้อมูลจองแล้ว",
   WAIT_FULL_PAYMENT = "รอชำระค่าบัตร (กรณีฝากจ่าย)",
   WAIT_ADMIN_CONFIRM = "รอแอดมินยืนยันข้อมูล",
   READY_TO_PRESS = "พร้อมกดบัตร",
@@ -32,6 +33,10 @@ export const STATUS_METADATA: Record<TrackingStatus, StatusMetadata> = {
   [TrackingStatus.WAIT_BOOKING_INFO]: {
     description: "กรุณากรอกข้อมูลเพิ่มเติมของการจองให้ครบถ้วน เพื่อให้ทีมงานดำเนินการต่อได้",
     colorClass: "bg-amber-100 text-amber-900",
+  },
+  [TrackingStatus.INFO_SUBMITTED]: {
+    description: "ได้รับข้อมูลการจองครบทุกรายชื่อแล้ว อยู่ระหว่างรอแอดมินตรวจสอบ",
+    colorClass: "bg-emerald-100 text-emerald-800",
   },
   [TrackingStatus.WAIT_FULL_PAYMENT]: {
     description:

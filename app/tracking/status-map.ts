@@ -12,6 +12,7 @@ const STATUS_MAP: Record<BookingStatus, TrackingStatus> = {
   QUEUE_BOOKED: TrackingStatus.BOOKING_CONFIRMED,
   // แอดมินขอข้อมูลเพิ่ม → หน้าติดตามต้องโชว์ปุ่มกรอกข้อมูลเพิ่มเติม
   WAITING_BOOKING_INFO: TrackingStatus.WAIT_BOOKING_INFO,
+  BOOKING_INFO_SUBMITTED: TrackingStatus.INFO_SUBMITTED,
   TRANSFERRING_TICKET: TrackingStatus.WAIT_FULL_PAYMENT,
   CONFIRMING_TICKET: TrackingStatus.PREPARE_PRESS,
   WAITING_ADMIN_CONFIRM: TrackingStatus.WAIT_ADMIN_CONFIRM,
@@ -63,6 +64,7 @@ const CANCELLABLE_STATUSES: ReadonlySet<BookingStatus> = new Set([
   "WAITING_DEPOSIT_VERIFY",
   "QUEUE_BOOKED",
   "WAITING_BOOKING_INFO",
+  "BOOKING_INFO_SUBMITTED",
   "TRANSFERRING_TICKET",
   "CONFIRMING_TICKET",
   "WAITING_ADMIN_CONFIRM",

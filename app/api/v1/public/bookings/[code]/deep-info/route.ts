@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
+import { getSystemActorId } from "@/lib/system-actor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const GENERIC_NOT_FOUND = "ไม่พบข้อมูลการจอง";
+
+/**
+ * Statuses that may advance to BOOKING_INFO_SUBMITTED ("กรอกข้อมูลจองแล้ว")
+ * once the customer completes every name. Deliberately narrow: a booking that
+ * has already moved on (ค่าบัตร, พร้อมกดบัตร, กำลังกด …) must never be dragged
+ * backwards just because someone edited their answers.
+ */
+const AWAITING_INFO_STATUSES: BookingStatus[] = [
+  BookingStatus.QUEUE_BOOKED,
+  BookingStatus.WAITING_BOOKING_INFO,
+];
 
 export interface DeepInfoResponseItem {
   fieldId: number;
@@ -91,9 +104,11 @@ export async function POST(
       select: {
         id: true,
         eventId: true,
+        status: true,
         deletedAt: true,
         customer: { select: { lineUserId: true } },
         bookingItems: { select: { quantity: true } },
+        event: { select: { _count: { select: { deepInfoFields: true } } } },
       },
     });
     if (
@@ -148,6 +163,10 @@ export async function POST(
     }
 
     const bookingId = booking.id;
+    // Resolved up front: the status log's changedBy is NOT NULL and a customer
+    // is not an admin user, so the shared "system" actor stands in.
+    const systemActorId = await getSystemActorId();
+
     await prisma.$transaction(async (tx) => {
       const existing = await tx.deepInfoResponse.findMany({
         where: { bookingId, fieldId: { in: fieldIds } },
@@ -181,6 +200,34 @@ export async function POST(
           });
         }
       }
+
+      // Once every field of every booked name has an answer, flag the booking
+      // as "กรอกข้อมูลจองแล้ว" so the admin sees it in the bookings list
+      // instead of opening each booking to check. Counted from the DB inside
+      // the transaction (not from the payload) so a partial submit can't
+      // mark it complete. Blank answers are deleted, never stored.
+      const fieldCount = booking.event._count.deepInfoFields;
+      if (fieldCount === 0) return;
+      const filled = await tx.deepInfoResponse.count({ where: { bookingId } });
+      if (filled < fieldCount * entryCount) return;
+
+      const res = await tx.booking.updateMany({
+        where: { id: bookingId, status: { in: AWAITING_INFO_STATUSES } },
+        data: { status: BookingStatus.BOOKING_INFO_SUBMITTED },
+      });
+      if (res.count === 0) return; // already past this stage — leave it alone
+
+      await tx.bookingStatusLog.create({
+        data: {
+          bookingId,
+          changedBy: systemActorId,
+          status: BookingStatus.BOOKING_INFO_SUBMITTED,
+          notes:
+            entryCount > 1
+              ? `ลูกค้ากรอกข้อมูลการจองครบทั้ง ${entryCount} รายชื่อผ่านหน้าเว็บ`
+              : "ลูกค้ากรอกข้อมูลการจองครบผ่านหน้าเว็บ",
+        },
+      });
     });
 
     return NextResponse.json({ data: { ok: true } });
