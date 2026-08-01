@@ -147,6 +147,11 @@ export function StepDetails({
   const TypeIcon = isFormType ? ClipboardList : Ticket;
   const typeLabel = isFormType ? "ฟอร์มรายชื่อ" : "บัตรคอนเสิร์ต";
 
+  // Reducing the quantity is only offered while the booking is still in the
+  // ข้อมูลเชิงลึก step — the server enforces the same window, so showing the
+  // control any later would just produce a 409.
+  const canReduceEntries = allowEdit && detail.canCancelEntries;
+
   /**
    * Pick exactly which booked slots to cancel. A bare counter can't work here:
    * the customer must see *which* name goes, or they cancel the wrong person.
@@ -361,7 +366,7 @@ export function StepDetails({
               icon={Users}
               title="จำนวนรายชื่อ"
               action={
-                allowEdit ? (
+                canReduceEntries ? (
                   <Button
                     variant={isEditingZone ? "default" : "outline"}
                     size="sm"
@@ -384,7 +389,7 @@ export function StepDetails({
               }
             />
 
-            {allowEdit && isEditingZone ? (
+            {canReduceEntries && isEditingZone ? (
               entryPicker
             ) : (
               <div className="flex items-center gap-4 rounded-2xl border border-border/60 bg-secondary/20 p-4">
@@ -491,7 +496,7 @@ export function StepDetails({
               })}
             </div>
 
-            {allowEdit && isEditingZone && entryPicker}
+            {canReduceEntries && isEditingZone && entryPicker}
           </>
         )}
       </Card>

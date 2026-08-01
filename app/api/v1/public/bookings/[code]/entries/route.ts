@@ -3,14 +3,14 @@ import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { getSystemActorId } from "@/lib/system-actor";
 import { expandEntrySlots } from "@/lib/booking-entries";
-import { canCancelBooking } from "@/app/tracking/status-map";
+import { canCancelEntries } from "@/app/tracking/status-map";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const GENERIC_NOT_FOUND = "ไม่พบข้อมูลการจอง";
 const TOO_LATE =
-  "รายการนี้เริ่มดำเนินการแล้ว ไม่สามารถลดจำนวนเองได้ กรุณาติดต่อแอดมิน";
+  "เลยขั้นตอนกรอกข้อมูลการจองแล้ว ไม่สามารถลดจำนวนเองได้ กรุณาติดต่อแอดมิน";
 
 interface CancelEntriesBody {
   /** 1-based entry numbers the customer wants to drop. */
@@ -28,8 +28,10 @@ interface CancelEntriesBody {
  * field is touched here: `depositPaid` stays as-is and the admin's billing math
  * keeps working off it.
  *
- * Only allowed before pressing starts — the same window as cancelling the whole
- * booking. After that the team may already be working from the list.
+ * Only allowed while the customer is still filling in ข้อมูลเชิงลึก (see
+ * canCancelEntries) — not merely "before pressing". Past that point the ค่าบัตร
+ * for N tickets has already been transferred, so dropping one would desync
+ * money that has already changed hands.
  */
 export async function DELETE(
   req: NextRequest,
@@ -97,7 +99,7 @@ export async function DELETE(
       return NextResponse.json({ message: GENERIC_NOT_FOUND }, { status: 404 });
     }
 
-    if (!canCancelBooking(booking.status)) {
+    if (!canCancelEntries(booking.status)) {
       return NextResponse.json({ message: TOO_LATE }, { status: 409 });
     }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
-import { toTrackingStatus } from "@/app/tracking/status-map";
+import { canCancelEntries, toTrackingStatus } from "@/app/tracking/status-map";
 import { expandEntrySlots } from "@/lib/booking-entries";
 
 export const runtime = "nodejs";
@@ -59,6 +59,11 @@ export interface BookingDetailDTO {
   fields: DeepInfoFieldDTO[];
   /** Always exactly `quantity` items, blanks included, ordered by entryIndex. */
   entries: DeepInfoEntryDTO[];
+  /**
+   * True while the customer may still cancel individual entries — i.e. they are
+   * within the ข้อมูลเชิงลึก step. The server enforces the same rule.
+   */
+  canCancelEntries: boolean;
 }
 
 const GENERIC_NOT_FOUND = "ไม่พบข้อมูลการจอง";
@@ -201,6 +206,7 @@ function shape(b: BookingRow): BookingDetailDTO {
     zones,
     fields: b.event.deepInfoFields,
     entries,
+    canCancelEntries: canCancelEntries(b.status),
   };
 }
 

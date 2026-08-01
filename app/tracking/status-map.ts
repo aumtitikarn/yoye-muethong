@@ -80,3 +80,28 @@ export function canCancelBooking(status: BookingStatus): boolean {
 export const cancellableStatuses = (): BookingStatus[] => [
   ...CANCELLABLE_STATUSES,
 ];
+
+/**
+ * Statuses during which the customer is filling in ข้อมูลเชิงลึก — mirrors the
+ * `canFillDeepInfo` condition on the tracking page (BOOKING_CONFIRMED /
+ * WAIT_BOOKING_INFO), plus the state right after they submit.
+ *
+ * Reducing the booked quantity is only allowed inside this window. It is
+ * deliberately narrower than CANCELLABLE_STATUSES: from TRANSFERRING_TICKET
+ * onwards the customer has already transferred ค่าบัตร for N tickets, so
+ * silently dropping one would desync money that has already changed hands, and
+ * by READY_TO_BOOK the team is about to press from that exact list.
+ * Cancelling the *whole* booking is still allowed later — that path forfeits
+ * the deposit outright and involves no partial refund.
+ */
+const DEEP_INFO_STATUSES: ReadonlySet<BookingStatus> = new Set([
+  "WAITING_DEPOSIT_VERIFY",
+  "QUEUE_BOOKED",
+  "WAITING_BOOKING_INFO",
+  "BOOKING_INFO_SUBMITTED",
+] satisfies BookingStatus[]);
+
+/** True while the customer may still cancel individual booked names/tickets. */
+export function canCancelEntries(status: BookingStatus): boolean {
+  return DEEP_INFO_STATUSES.has(status);
+}

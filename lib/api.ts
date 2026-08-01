@@ -441,6 +441,8 @@ export interface BookingDetailDTO {
   fields: DeepInfoFieldDTO[];
   /** Always exactly `quantity` items, blanks included, ordered by entryIndex. */
   entries: DeepInfoEntryDTO[];
+  /** True while the customer may still cancel individual entries. */
+  canCancelEntries: boolean;
 }
 
 /** Fetch full detail of the caller's own booking (incl. admin extra fields). */
