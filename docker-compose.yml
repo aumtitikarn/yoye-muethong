@@ -28,6 +28,7 @@ services:
       - NEXT_PUBLIC_OMISE_PUBLIC_KEY=${NEXT_PUBLIC_OMISE_PUBLIC_KEY}
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik-4yt9_host"
       - "traefik.http.routers.booking.rule=Host(`yoyemuethong-dev.yoyemuethong.com`)"
       - "traefik.http.routers.booking.entrypoints=websecure"
       - "traefik.http.routers.booking.tls.certresolver=letsencrypt"
@@ -40,4 +41,6 @@ services:
 networks:
   yoye-link:
     external: true
+    # Traefik's network, created by the traefik stack (same value as yoye-admin)
+    name: traefik-4yt9_host
     name: traefik-4yt9_host
