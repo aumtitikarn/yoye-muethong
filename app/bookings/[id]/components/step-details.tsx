@@ -16,11 +16,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowRight,
   BadgeCheck,
   CalendarDays,
   ClipboardList,
+  Copy as CopyIcon,
   CreditCard,
   Loader2,
   MapPin,
@@ -65,6 +67,8 @@ export function StepDetails({
   // Entry numbers the customer ticked for cancellation (not yet submitted).
   const [entriesToRemove, setEntriesToRemove] = useState<number[]>([]);
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  // Entries the customer chose to mirror from the first booked name/ticket.
+  const [sameAsFirst, setSameAsFirst] = useState<number[]>([]);
   const cancelEntries = useCancelBookingEntriesMutation(detail.bookingCode);
 
   // Sync editable state once the real booking loads.
@@ -74,6 +78,7 @@ export function StepDetails({
       detail.zones.find((z) => z.name === detail.zone)?.id ?? null,
     );
     if (detail.ticketPaymentMode) setPaymentMethod(detail.ticketPaymentMode);
+    setSameAsFirst([]);
     setExtraValues(
       Object.fromEntries(
         detail.entries.flatMap((entry) =>
@@ -90,6 +95,53 @@ export function StepDetails({
   const isPerEntry = entries.length > 1;
   const answerKey = (entryIndex: number, fieldId: number) =>
     `${entryIndex}:${fieldId}`;
+
+  // The entry every other one can copy from. Not always index 1 — cancelling
+  // entries can leave gaps, so take whatever is listed first.
+  const baseEntry = entries[0];
+  const isMirrored = (entryIndex: number) => sameAsFirst.includes(entryIndex);
+
+  /**
+   * Write one answer. Editing the base entry also updates every entry that is
+   * currently mirroring it, so the copy never drifts out of sync.
+   */
+  const setAnswer = (entryIndex: number, fieldId: number, value: string) => {
+    if (saveDeepInfo.isSuccess) saveDeepInfo.reset();
+    setExtraValues((prev) => {
+      const next = { ...prev, [answerKey(entryIndex, fieldId)]: value };
+      if (baseEntry && entryIndex === baseEntry.entryIndex) {
+        for (const mirroredIndex of sameAsFirst) {
+          next[answerKey(mirroredIndex, fieldId)] = value;
+        }
+      }
+      return next;
+    });
+  };
+
+  /**
+   * Tick = copy the base entry's answers over and keep them locked in sync.
+   * Untick = leave the copied values in place, editable again, so the customer
+   * can start from the copy instead of typing everything from scratch.
+   */
+  const toggleSameAsFirst = (entryIndex: number, checked: boolean) => {
+    setSameAsFirst((prev) =>
+      checked
+        ? prev.includes(entryIndex)
+          ? prev
+          : [...prev, entryIndex]
+        : prev.filter((i) => i !== entryIndex),
+    );
+    if (!checked || !baseEntry) return;
+    if (saveDeepInfo.isSuccess) saveDeepInfo.reset();
+    setExtraValues((prev) => {
+      const next = { ...prev };
+      for (const field of extraFields) {
+        next[answerKey(entryIndex, field.id)] =
+          prev[answerKey(baseEntry.entryIndex, field.id)] ?? "";
+      }
+      return next;
+    });
+  };
 
   /**
    * What the customer calls this slot. For form bookings that's the name they
@@ -619,6 +671,9 @@ export function StepDetails({
         ) : (
           <div className="space-y-4">
             {entries.map((entry) => {
+              const isBase = !baseEntry || entry.entryIndex === baseEntry.entryIndex;
+              const mirrored = !isBase && isMirrored(entry.entryIndex);
+              const locked = savedEntries.has(entry.entryIndex) || !allowEdit;
               const body = (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {extraFields.map((field) => {
@@ -638,17 +693,11 @@ export function StepDetails({
                           id={`extra-${key}`}
                           placeholder={field.label}
                           value={extraValues[key] ?? ""}
-                          disabled={
-                            savedEntries.has(entry.entryIndex) || !allowEdit
-                          }
+                          disabled={locked || mirrored}
                           className="h-11 rounded-xl text-foreground disabled:opacity-100 disabled:text-foreground"
-                          onChange={(e) => {
-                            if (saveDeepInfo.isSuccess) saveDeepInfo.reset();
-                            setExtraValues((prev) => ({
-                              ...prev,
-                              [key]: e.target.value,
-                            }));
-                          }}
+                          onChange={(e) =>
+                            setAnswer(entry.entryIndex, field.id, e.target.value)
+                          }
                         />
                       </div>
                     );
@@ -682,6 +731,41 @@ export function StepDetails({
                       </span>
                     )}
                   </div>
+
+                  {/* Most customers book several names with the same phone /
+                      address / social handle — let them copy instead of
+                      retyping the same answers for every entry. */}
+                  {!isBase && !locked && (
+                    <label
+                      htmlFor={`same-as-first-${entry.entryIndex}`}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-2.5 rounded-xl border-2 p-3 transition-colors",
+                        mirrored
+                          ? "border-primary bg-primary/5"
+                          : "border-border/60 bg-background hover:border-primary/40",
+                      )}
+                    >
+                      <Checkbox
+                        id={`same-as-first-${entry.entryIndex}`}
+                        checked={mirrored}
+                        onCheckedChange={(v) =>
+                          toggleSameAsFirst(entry.entryIndex, v === true)
+                        }
+                      />
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                          <CopyIcon className="size-3.5 text-accent" />
+                          ใช้ข้อมูลเหมือน{unitWord}ที่ {baseEntry.entryIndex}
+                        </span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          {mirrored
+                            ? `ข้อมูลจะตรงกับ${unitWord}ที่ ${baseEntry.entryIndex} อัตโนมัติ`
+                            : `คัดลอกข้อมูลจาก${unitWord}ที่ ${baseEntry.entryIndex} มาใส่ให้อัตโนมัติ`}
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
                   {body}
                 </div>
               );
