@@ -78,7 +78,9 @@ export default function TicketFeePaymentPage() {
               ชำระค่าบัตรเรียบร้อยแล้ว
             </h2>
             <Button variant="outline" asChild>
-              <Link href="/tracking">กลับหน้าติดตามสถานะ</Link>
+              <Link href={`/bookings/${encodeURIComponent(bookingCode)}?step=2`}>
+                ดูสถานะการชำระเงิน
+              </Link>
             </Button>
           </Card>
         )}

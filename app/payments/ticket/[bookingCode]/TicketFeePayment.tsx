@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, CreditCard, Loader2, LogIn, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { invalidateBookingMoneyQueries } from "@/lib/queries";
 import {
   createTicketFeeCharge,
   confirmTicketFeeCharge,
@@ -74,6 +75,7 @@ export default function TicketFeePayment({
   amountBaht,
 }: TicketFeePaymentProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [scriptReady, setScriptReady] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [pollChargeId, setPollChargeId] = useState<string | null>(null);
@@ -100,9 +102,19 @@ export default function TicketFeePayment({
       }
       setPhase({ kind: "success" });
       toast.success("ชำระค่าบัตรสำเร็จ");
-      setTimeout(() => router.push("/tracking"), 1200);
+      // Everything cached about this booking was fetched before the charge
+      // settled, so throw it away before navigating — otherwise ขั้นตอนที่ 2
+      // renders the pre-payment answer and still says "รอดำเนินการ".
+      void invalidateBookingMoneyQueries(queryClient, bookingCode);
+      setTimeout(
+        () =>
+          router.push(
+            `/bookings/${encodeURIComponent(bookingCode)}?step=2`,
+          ),
+        1200,
+      );
     },
-    [router]
+    [bookingCode, queryClient, router]
   );
 
   const handleCharge = useCallback(
@@ -272,7 +284,7 @@ export default function TicketFeePayment({
       {phase.kind === "success" ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-center gap-2 text-emerald-700 font-semibold">
           <CheckCircle2 className="size-5" /> ชำระค่าบัตรสำเร็จ
-          กำลังพาไปหน้าติดตามสถานะ...
+          กำลังพาไปหน้าการชำระเงิน...
         </div>
       ) : phase.kind === "needLogin" ? (
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-center space-y-3">
@@ -297,7 +309,7 @@ export default function TicketFeePayment({
             <Loader2 className="size-4 animate-spin" /> กำลังรอการชำระเงิน...
           </div>
           <p className="text-xs text-muted-foreground">
-            เมื่อชำระสำเร็จ ระบบจะอัปเดตสถานะและพาไปหน้าติดตามสถานะให้อัตโนมัติ
+            เมื่อชำระสำเร็จ ระบบจะอัปเดตสถานะและพาไปหน้าการชำระเงินของรายการนี้ให้อัตโนมัติ
           </p>
           <Button variant="ghost" size="sm" asChild>
             <Link href="/tracking">ไปหน้าติดตามสถานะ →</Link>

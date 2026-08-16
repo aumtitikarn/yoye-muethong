@@ -32,6 +32,20 @@ type ItemState = {
   payHref?: string;
 };
 
+/**
+ * "รอดำเนินการ" is only honest while a real amount is waiting on the shop. With
+ * nothing billed yet (no ยอดค่าบัตร sent, no bill issued) the customer reads it
+ * as "I paid and nothing happened" — say "ยังไม่มียอด" instead.
+ */
+function feeState(
+  info: { alreadyPaid: boolean; payable: boolean; amountBaht: number } | undefined,
+): ItemState["state"] {
+  if (!info) return "none";
+  if (info.alreadyPaid) return "paid";
+  if (info.payable) return "payable";
+  return info.amountBaht > 0 ? "pending" : "none";
+}
+
 function StatusPill({ state }: { state: ItemState["state"] }) {
   const map = {
     paid: { label: "ชำระแล้ว", cls: "bg-emerald-50 text-emerald-600" },
@@ -145,14 +159,8 @@ export function StepPayment({ detail }: { detail: BookingDetailDTO }) {
     description: t?.ticketZone
       ? `โซน ${t.ticketZone}${t.ticketQty ? ` · ${t.ticketQty}` : ""}`
       : "ยอดค่าบัตรที่ต้องโอนให้ร้าน (กรณีฝากจ่าย)",
-    amount: t ? t.amountBaht : null,
-    state: !t
-      ? "none"
-      : t.alreadyPaid
-        ? "paid"
-        : t.payable
-          ? "payable"
-          : "pending",
+    amount: t && t.amountBaht > 0 ? t.amountBaht : null,
+    state: feeState(t),
     hint: t?.dueText ? `กำหนดชำระ: ${t.dueText}` : undefined,
     payHref: `/payments/ticket/${code}`,
   };
@@ -165,14 +173,8 @@ export function StepPayment({ detail }: { detail: BookingDetailDTO }) {
     description: s?.quantity
       ? `${s.quantity} รายการ × ${baht(s.feePerEntry)}`
       : "ค่าบริการกดบัตรของทีมงาน",
-    amount: s ? s.amountBaht : null,
-    state: !s
-      ? "none"
-      : s.alreadyPaid
-        ? "paid"
-        : s.payable
-          ? "payable"
-          : "pending",
+    amount: s && s.amountBaht > 0 ? s.amountBaht : null,
+    state: feeState(s),
     payHref: `/payments/${code}`,
   };
 

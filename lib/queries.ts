@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   cancelBooking,
   cancelBookingEntries,
@@ -16,6 +21,29 @@ import {
   type SaveDeepInfoInput,
   type RefundInfoInput,
 } from "./api";
+
+/**
+ * Drop every cached answer about one booking's money after a payment settles.
+ *
+ * The payment pages call this before sending the customer back to the booking
+ * wizard. Every one of those caches was filled BEFORE the charge went through
+ * and stays fresh for 30s, so without this the customer lands on ขั้นตอนที่ 2
+ * and reads "รอดำเนินการ" next to the fee they just paid.
+ */
+export function invalidateBookingMoneyQueries(
+  queryClient: QueryClient,
+  bookingCode: string,
+): Promise<unknown> {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["booking-detail", bookingCode] }),
+    queryClient.invalidateQueries({ queryKey: ["ticket-fee-info", bookingCode] }),
+    queryClient.invalidateQueries({
+      queryKey: ["service-fee-info", bookingCode],
+    }),
+    queryClient.invalidateQueries({ queryKey: ["refund-info", bookingCode] }),
+    queryClient.invalidateQueries({ queryKey: ["bookings"] }),
+  ]);
+}
 
 /** Server state: bookable events for step 1 of the booking flow. */
 export function useEventsQuery() {
