@@ -24,6 +24,20 @@ export const serviceFeeBookingSelect = {
   customer: { select: { lineUserId: true } },
   event: { select: { name: true, type: true, feePerEntry: true } },
   bookingItems: { select: { quantity: true } },
+  // Proof that the ค่ากด actually landed — see the same note in lib/ticket-fee.ts:
+  // `status` is a moving pipeline position, the ledger row is permanent.
+  paymentSlips: {
+    where: { type: "SERVICE_PAID", status: "VERIFIED" },
+    select: { id: true },
+    take: 1,
+  },
+  // The other durable trace: an admin-verified bank transfer moves the booking to
+  // SERVICE_FEE_PAID and logs it, but writes no payment_slips row.
+  statusLogs: {
+    where: { status: "SERVICE_FEE_PAID" },
+    select: { id: true },
+    take: 1,
+  },
   // Latest bill created by the admin — its finalAmount is the exact ค่ากด due.
   fulfillment: {
     select: {
@@ -56,16 +70,28 @@ export function serviceFeeInfo(b: ServiceFeeBookingRow): ServiceFeeInfoDTO {
   // deposits, partial fills and VAT, so it is the single source of truth.
   const amountBaht = b.fulfillment?.billLogs[0]?.finalAmount ?? 0;
 
+  // Payable once the admin has created the bill (สร้างบิล → รอตรวจสลิปค่ากด),
+  // for both FORM and TICKET events — the bill amount is what's owed.
+  const payable = b.status === "WAITING_SERVICE_FEE_VERIFY" && amountBaht > 0;
+  // Settled = a verified ค่ากด slip exists (Omise charge or an admin-approved
+  // bank transfer), or the booking sits on a status that only follows payment.
+  // Without the slip check, any later status (คืนเงิน, ปิดงาน …) reported the
+  // paid fee back as "รอดำเนินการ". `payable` wins if the admin re-billed.
+  const alreadyPaid =
+    !payable &&
+    (b.paymentSlips.length > 0 ||
+      b.statusLogs.length > 0 ||
+      b.status === "SERVICE_FEE_PAID" ||
+      b.status === "COMPLETED");
+
   return {
     bookingCode: b.bookingCode,
     eventName: b.event.name,
     quantity,
     feePerEntry,
     amountBaht,
-    // Payable once the admin has created the bill (สร้างบิล → รอตรวจสลิปค่ากด),
-    // for both FORM and TICKET events — the bill amount is what's owed.
-    payable: b.status === "WAITING_SERVICE_FEE_VERIFY" && amountBaht > 0,
-    alreadyPaid: b.status === "SERVICE_FEE_PAID" || b.status === "COMPLETED",
+    payable,
+    alreadyPaid,
     status: b.status,
   };
 }

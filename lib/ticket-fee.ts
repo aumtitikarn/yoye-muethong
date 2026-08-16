@@ -28,6 +28,21 @@ export const ticketFeeBookingSelect = {
   deletedAt: true,
   customer: { select: { lineUserId: true } },
   event: { select: { name: true } },
+  // Proof that the ค่าบัตร actually landed. `status` alone can't answer this:
+  // it is a moving pipeline position, and the booking leaves CONFIRMING_TICKET
+  // as soon as the admin confirms the transfer.
+  paymentSlips: {
+    where: { type: "CARD_PAID", status: "VERIFIED" },
+    select: { id: true },
+    take: 1,
+  },
+  // The other durable trace: a manual bank transfer confirmed by the admin moves
+  // the booking to CONFIRMING_TICKET and logs it, but writes no payment_slips row.
+  statusLogs: {
+    where: { status: "CONFIRMING_TICKET" },
+    select: { id: true },
+    take: 1,
+  },
   // Latest ticket-payment notice set by the admin — its amount is what's owed.
   ticketPaymentRequests: {
     orderBy: { sentAt: "desc" },
@@ -57,6 +72,23 @@ export function ticketFeeInfo(b: TicketFeeBookingRow): TicketFeeInfoDTO {
   const latest = b.ticketPaymentRequests[0];
   const amountBaht = latest?.amount != null ? Number(latest.amount) : 0;
 
+  // Payable while the booking sits in "โอนค่าบัตร (กรณีฝากร้าน)" and the admin
+  // has set an amount to pay.
+  const payable = b.status === "TRANSFERRING_TICKET" && amountBaht > 0;
+  // Settled = a verified ค่าบัตร slip exists (Omise charge or an admin-approved
+  // bank transfer), or the booking is sitting on one of the two statuses that
+  // only follow payment. The slip is the durable half: statuses past
+  // CONFIRMING_TICKET (ยืนยันแล้ว → กดบัตร → สรุปยอด …) used to read as
+  // "รอดำเนินการ" even though the money was in.
+  // `payable` still wins — if the admin re-opened the transfer step, the
+  // customer owes something now and must get the ชำระเงิน button back.
+  const alreadyPaid =
+    !payable &&
+    (b.paymentSlips.length > 0 ||
+      b.statusLogs.length > 0 ||
+      b.status === "CONFIRMING_TICKET" ||
+      b.status === "COMPLETED");
+
   return {
     bookingCode: b.bookingCode,
     eventName: latest?.eventName ?? b.event.name,
@@ -66,11 +98,8 @@ export function ticketFeeInfo(b: TicketFeeBookingRow): TicketFeeInfoDTO {
     amountBaht,
     dueAt: latest?.dueAt ? latest.dueAt.toISOString() : null,
     dueText: latest?.dueText ?? null,
-    // Payable while the booking sits in "โอนค่าบัตร (กรณีฝากร้าน)" and the admin
-    // has set an amount to pay.
-    payable: b.status === "TRANSFERRING_TICKET" && amountBaht > 0,
-    // Once paid it advances to "ยืนยันโอนค่าบัตร" (admin confirms) and beyond.
-    alreadyPaid: b.status === "CONFIRMING_TICKET" || b.status === "COMPLETED",
+    payable,
+    alreadyPaid,
     status: b.status,
   };
 }
