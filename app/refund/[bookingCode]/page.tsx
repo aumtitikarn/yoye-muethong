@@ -23,13 +23,17 @@ import {
   Landmark,
   Loader2,
   LogIn,
+  ReceiptText,
 } from "lucide-react";
 import {
   useBookingsQuery,
+  useRefundInfoQuery,
   useSubmitRefundMutation,
   BookingsError,
 } from "@/lib/queries";
 import { TrackingStatus } from "@/app/tracking/types/enum";
+
+const baht = (n: number) => `฿${n.toLocaleString("th-TH")}`;
 
 const OTHER_BANK = "__other__";
 
@@ -54,6 +58,7 @@ export default function RefundInfoPage() {
   const router = useRouter();
 
   const { data, isPending, isError, error } = useBookingsQuery();
+  const refundInfo = useRefundInfoQuery(bookingCode);
   const submitRefund = useSubmitRefundMutation(bookingCode);
 
   const row = useMemo(
@@ -181,6 +186,61 @@ export default function RefundInfoPage() {
                 </p>
               </div>
             </Card>
+
+            {/* What the shop is refunding, and how it adds up. The form below
+                asks for "ยอดตามที่ร้านแจ้ง" — without showing that number (and
+                the split behind it) the customer is left guessing. */}
+            {(refundInfo.data?.refundAmount ?? 0) > 0 && (
+              <Card className="space-y-4 p-5">
+                <div className="flex items-center gap-2 font-semibold text-foreground">
+                  <ReceiptText className="size-4 text-primary" /> ยอดที่ร้านแจ้งคืน
+                </div>
+
+                {refundInfo.data!.breakdown.length > 0 ? (
+                  <div className="divide-y divide-border/60 rounded-xl border border-border/60 bg-secondary/10">
+                    {refundInfo.data!.breakdown.map((item) => (
+                      <div
+                        key={item.key}
+                        className="flex items-center justify-between gap-3 px-4 py-2.5"
+                      >
+                        <span className="text-sm text-foreground">
+                          {item.label}
+                        </span>
+                        <span className="shrink-0 text-sm font-bold text-foreground">
+                          {baht(item.amount)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between gap-3 bg-primary/5 px-4 py-2.5">
+                      <span className="text-sm font-bold text-foreground">
+                        รวมยอดคืน
+                      </span>
+                      <span className="shrink-0 text-lg font-black text-primary">
+                        {baht(refundInfo.data!.breakdownTotal)}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-border/60 bg-secondary/10 px-4 py-3">
+                    <p className="text-2xl font-black text-primary">
+                      {baht(refundInfo.data!.refundAmount)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      ร้านยังไม่ได้สรุปรายละเอียดยอดคืน — จะแจ้งให้ทราบอีกครั้งค่ะ
+                    </p>
+                  </div>
+                )}
+
+                {refundInfo.data!.reason && (
+                  <p className="text-xs text-muted-foreground">
+                    เหตุผลการคืนเงิน:{" "}
+                    <span className="font-semibold text-foreground">
+                      {refundInfo.data!.reason}
+                    </span>
+                  </p>
+                )}
+              </Card>
+            )}
 
             <Card className="space-y-5 p-5">
               <div className="flex items-center gap-2 font-semibold text-foreground">

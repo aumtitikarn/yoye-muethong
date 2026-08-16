@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
+import {
+  refundBreakdownItems,
+  type RefundBreakdownItemDTO,
+} from "@/lib/refund-breakdown";
 import { toTrackingStatus } from "@/app/tracking/status-map";
 import { TrackingStatus } from "@/app/tracking/types/enum";
 
@@ -31,6 +35,8 @@ export interface RefundTransactionDTO {
   paidAt: string;
   payoutSlipUrl: string | null;
   status: string;
+  /** How this payout was split (ค่าบัตร / มัดจำ / …), as entered by the admin. */
+  breakdown: RefundBreakdownItemDTO[];
 }
 
 export interface RefundSummaryDTO {
@@ -44,6 +50,15 @@ export interface RefundSummaryDTO {
   account: RefundAccountDTO | null;
   /** Payouts the shop has already made to the customer (paidAt set). */
   transactions: RefundTransactionDTO[];
+  /**
+   * The admin's split of the refund total — what the customer is getting back
+   * and for what. Empty when the admin hasn't filled it in.
+   */
+  breakdown: RefundBreakdownItemDTO[];
+  /** Sum of `breakdown`, so the customer can check it against the headline. */
+  breakdownTotal: number;
+  /** เหตุผลการคืนเงิน the admin picked (กดไม่ได้ / ได้ไม่ครบ / …). */
+  reason: string | null;
 }
 
 // GET /api/v1/public/bookings/:code/refund
@@ -87,6 +102,8 @@ export async function GET(
             accountHolder: true,
             amount: true,
             status: true,
+            breakdown: true,
+            reason: true,
             payoutSlipUrl: true,
             paidAt: true,
             requestedAt: true,
@@ -129,7 +146,17 @@ export async function GET(
         paidAt: (r.paidAt as Date).toISOString(),
         payoutSlipUrl: r.payoutSlipUrl,
         status: r.status,
+        breakdown: refundBreakdownItems(r.breakdown),
       }));
+
+    // The breakdown belongs to a refund request, so take it from the newest one
+    // that actually has it — the latest request can still be an empty shell the
+    // customer created with their bank details, before the admin priced it out.
+    const breakdownSource =
+      booking.refundRequests.find(
+        (r) => refundBreakdownItems(r.breakdown).length > 0,
+      ) ?? latest;
+    const breakdown = refundBreakdownItems(breakdownSource?.breakdown);
 
     const data: RefundSummaryDTO = {
       refundAmount: booking.refundAmount,
@@ -137,6 +164,9 @@ export async function GET(
       editable,
       account,
       transactions,
+      breakdown,
+      breakdownTotal: breakdown.reduce((sum, i) => sum + i.amount, 0),
+      reason: breakdownSource?.reason ?? null,
     };
     return NextResponse.json({ data });
   } catch (err) {

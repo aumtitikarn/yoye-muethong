@@ -10,6 +10,7 @@ import {
   Loader2,
   LogIn,
   Pencil,
+  ReceiptText,
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,7 @@ import {
 } from "@/components/ui/table";
 import { useRefundInfoQuery, useSubmitRefundMutation } from "@/lib/queries";
 import { PaymentAuthError } from "@/lib/api";
-import type { RefundAccountDTO } from "@/lib/api";
+import type { RefundAccountDTO, RefundBreakdownItemDTO } from "@/lib/api";
 import { StepIntro, baht } from "./wizard-blocks";
 
 const OTHER_BANK = "__other__";
@@ -96,6 +97,8 @@ export function StepRefund({ bookingCode }: { bookingCode: string }) {
   const editable = Boolean(data?.editable);
   const transactions = data?.transactions ?? [];
   const refundAmount = data?.refundAmount ?? 0;
+  const breakdown = data?.breakdown ?? [];
+  const breakdownTotal = data?.breakdownTotal ?? 0;
 
   return (
     <div className="space-y-4">
@@ -124,6 +127,64 @@ export function StepRefund({ bookingCode }: { bookingCode: string }) {
           </span>
         )}
       </Card>
+
+      {/* How the shop arrived at that number. Showing only the total leaves the
+          customer no way to check the shop's arithmetic — this is the same
+          split the admin typed into the "แจ้งเงินคืน" dialog. */}
+      {breakdown.length > 0 && (
+        <Card className="space-y-4 p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/25 to-primary/5 text-accent">
+              <ReceiptText className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base font-bold leading-tight">
+                รายละเอียดยอดคืน
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                ร้านสรุปยอดคืนของคุณจากรายการเหล่านี้
+              </p>
+            </div>
+          </div>
+
+          <div className="divide-y divide-border/60 rounded-2xl border border-border/60 bg-secondary/10">
+            {breakdown.map((item) => (
+              <div
+                key={item.key}
+                className="flex items-center justify-between gap-3 px-4 py-3"
+              >
+                <span className="text-sm text-foreground">{item.label}</span>
+                <span className="shrink-0 text-sm font-bold text-foreground">
+                  {baht(item.amount)}
+                </span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-3 bg-primary/5 px-4 py-3">
+              <span className="text-sm font-bold text-foreground">รวมยอดคืน</span>
+              <span className="shrink-0 text-lg font-black text-accent">
+                {baht(breakdownTotal)}
+              </span>
+            </div>
+          </div>
+
+          {data?.reason && (
+            <p className="text-xs text-muted-foreground">
+              เหตุผลการคืนเงิน:{" "}
+              <span className="font-semibold text-foreground">{data.reason}</span>
+            </p>
+          )}
+
+          {/* The headline comes from the amount the shop announced earlier; if the
+              final split lands somewhere else the customer should hear it from us
+              rather than discover it in their bank app. */}
+          {refundAmount > 0 && Math.abs(refundAmount - breakdownTotal) >= 0.01 && (
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+              ⚠️ ยอดที่ร้านแจ้งไว้ก่อนหน้าคือ {baht(refundAmount)} — หากยอดไม่ตรงกัน
+              รบกวนสอบถามแอดมินได้เลยค่ะ
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* Bank account for the refund */}
       <Card className="space-y-4 p-5">
@@ -209,8 +270,11 @@ export function StepRefund({ bookingCode }: { bookingCode: string }) {
               <TableBody>
                 {transactions.map((tx) => (
                   <TableRow key={tx.id}>
-                    <TableCell className="whitespace-nowrap text-sm">
-                      {thaiDateTime.format(new Date(tx.paidAt))}
+                    <TableCell className="text-sm">
+                      <span className="whitespace-nowrap">
+                        {thaiDateTime.format(new Date(tx.paidAt))}
+                      </span>
+                      <BreakdownNote items={tx.breakdown} />
                     </TableCell>
                     <TableCell className="text-right font-semibold text-accent">
                       {baht(tx.amount)}
@@ -252,6 +316,16 @@ export function StepRefund({ bookingCode }: { bookingCode: string }) {
         defaultAmount={refundAmount}
       />
     </div>
+  );
+}
+
+/** Compact "คืนค่าบัตร ฿300 · คืนค่ามัดจำ ฿200" line under a payout row. */
+function BreakdownNote({ items }: { items: RefundBreakdownItemDTO[] }) {
+  if (items.length === 0) return null;
+  return (
+    <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+      {items.map((i) => `${i.label} ${baht(i.amount)}`).join(" · ")}
+    </span>
   );
 }
 

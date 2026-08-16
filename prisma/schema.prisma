@@ -254,6 +254,16 @@ model TicketPaymentRequest {
   @@map("ticket_payment_requests")
 }
 
+// What kind of money is being refunded. Owned/migrated by yoye-admin — mirrored
+// here so the storefront can read RefundRequest.category.
+enum RefundCategory {
+  TICKET
+  DEPOSIT
+  PRICE_DIFF
+  SHIPPING
+  MIXED
+}
+
 // Lifecycle of a refund request. Owned/migrated by yoye-admin — declared here
 // only so the storefront can read the current status. Values mirror the admin
 // enum exactly (the underlying Postgres enum is shared).
@@ -270,13 +280,19 @@ enum RefundStatus {
 // by yoye-admin when it pays the refund out; the storefront surfaces them in the
 // booking's refund step but never writes them.
 model RefundRequest {
-  id            Int          @id @default(autoincrement())
+  id            Int            @id @default(autoincrement())
   bookingId     Int
   bankName      String
   accountNumber String
   accountHolder String
   amount        Float
-  status        RefundStatus @default(REQUESTED)
+  status        RefundStatus   @default(REQUESTED)
+  /// How the admin split the refund total (แจ้งเงินคืน dialog): ยอดคืนค่าบัตร /
+  /// ค่ามัดจำ / ส่วนต่างหลังหักค่ากด / ค่าส่ง / อื่น ๆ. Read-only here — the
+  /// storefront shows the customer the same breakdown the admin entered.
+  category      RefundCategory @default(MIXED)
+  breakdown     Json?
+  reason        String?
   payoutSlipUrl String?
   paidAt        DateTime?
   processedAt   DateTime?

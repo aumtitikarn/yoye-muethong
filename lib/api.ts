@@ -551,12 +551,20 @@ export interface RefundAccountDTO {
   requestedAt: string;
 }
 
+export interface RefundBreakdownItemDTO {
+  key: string;
+  /** Thai label as the admin sees it, e.g. "คืนค่าบัตร". */
+  label: string;
+  amount: number;
+}
+
 export interface RefundTransactionDTO {
   id: number;
   amount: number;
   paidAt: string;
   payoutSlipUrl: string | null;
   status: string;
+  breakdown: RefundBreakdownItemDTO[];
 }
 
 export interface RefundSummaryDTO {
@@ -565,6 +573,10 @@ export interface RefundSummaryDTO {
   editable: boolean;
   account: RefundAccountDTO | null;
   transactions: RefundTransactionDTO[];
+  /** The admin's split of the refund total — empty if never filled in. */
+  breakdown: RefundBreakdownItemDTO[];
+  breakdownTotal: number;
+  reason: string | null;
 }
 
 /**
