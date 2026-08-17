@@ -11,6 +11,8 @@ import {
   LogIn,
   Pencil,
   ReceiptText,
+  RefreshCw,
+  TriangleAlert,
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -66,7 +68,8 @@ const thaiDateTime = new Intl.DateTimeFormat("th-TH", {
 });
 
 export function StepRefund({ bookingCode }: { bookingCode: string }) {
-  const { data, isPending, error } = useRefundInfoQuery(bookingCode);
+  const { data, isPending, error, refetch, isFetching } =
+    useRefundInfoQuery(bookingCode);
   const [editOpen, setEditOpen] = useState(false);
 
   if (error instanceof PaymentAuthError) {
@@ -87,6 +90,45 @@ export function StepRefund({ bookingCode }: { bookingCode: string }) {
             }}
           >
             <LogIn className="size-4" /> เข้าสู่ระบบด้วย LINE
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  // A failed load must not masquerade as "there is nothing here yet": every card
+  // below falls back to empty state, so without this the customer reads
+  // "ยังไม่มีข้อมูลบัญชีรับเงินคืน" when the request actually errored.
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <StepIntro step={3} title="การคืนเงิน" />
+        <Card className="space-y-4 p-6 text-center">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <TriangleAlert className="size-6" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">
+              โหลดข้อมูลการคืนเงินไม่สำเร็จ
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {error instanceof Error
+                ? error.message
+                : "กรุณาลองใหม่อีกครั้ง"}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="mx-auto gap-1.5"
+            disabled={isFetching}
+            onClick={() => refetch()}
+          >
+            {isFetching ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            ลองใหม่
           </Button>
         </Card>
       </div>
@@ -117,9 +159,13 @@ export function StepRefund({ bookingCode }: { bookingCode: string }) {
           <p className="text-xs font-medium text-muted-foreground">
             ยอดเงินที่ร้านจะคืน
           </p>
-          <p className="text-2xl font-black text-accent">
-            {refundAmount > 0 ? baht(refundAmount) : "รอร้านแจ้งยอด"}
-          </p>
+          {isPending ? (
+            <div className="mt-1 h-7 w-32 animate-pulse rounded-lg bg-muted/60" />
+          ) : (
+            <p className="text-2xl font-black text-accent">
+              {refundAmount > 0 ? baht(refundAmount) : "รอร้านแจ้งยอด"}
+            </p>
+          )}
         </div>
         {data?.trackingStatus && (
           <span className="shrink-0 rounded-full bg-muted px-3 py-1 text-[11px] font-semibold text-muted-foreground">
