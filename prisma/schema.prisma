@@ -455,3 +455,68 @@ model SiteVisitor {
 
   @@map("site_visitors")
 }
+
+// ── มัดจำ (deposit ledger) ───────────────────────────────────────────────────
+// Mirrors yoye-admin's DepositTransaction — the ledger its /finance ("มัดจำ")
+// page and dashboard read. Owned/migrated by yoye-admin; the storefront writes
+// exactly one kind of row here: the forfeit that follows a customer cancelling
+// their own queue or part of it (see lib/deposit-forfeit.ts).
+
+enum DepositTransactionType {
+  HELD
+  USED
+  FORFEITED
+  REFUNDED
+}
+
+enum DepositStatus {
+  DEPOSIT_PENDING
+  DEPOSIT_USED
+  DEPOSIT_FORFEITED
+  WAITING_REFUND
+  REFUNDED
+}
+
+enum DepositReason {
+  PRESS_SUCCESS
+  PRESS_FAILED
+  CUSTOMER_CANCEL
+  CUSTOMER_SELF_BOOKED
+  ADMIN_OVERRIDE
+}
+
+/// One line of the deposit ledger. `status != null` marks a *decided* row — the
+/// admin's finance page, dashboard and booking detail all read those only.
+///
+/// Two shapes matter here:
+/// - `type = HELD`   — the booking's single settlement row (ยึด/ใช้/คืน ทั้งก้อน),
+///                     written by yoye-admin's recomputeDeposit and by the
+///                     storefront when the customer cancels the whole queue.
+/// - `type = FORFEITED` — a partial forfeit from cancelling some ใบ/รายชื่อ while
+///                     the booking is still alive. Never touched by
+///                     recomputeDeposit; the settlement row later covers only
+///                     what is left.
+///
+/// The `amount` of every decided row for a booking sums to `booking.depositPaid`,
+/// which is what keeps the admin's "ยอดมัดจำทั้งหมด" total honest.
+model DepositTransaction {
+  id              Int                    @id @default(autoincrement())
+  bookingId       Int?
+  eventId         Int?
+  type            DepositTransactionType
+  amount          Float
+  status          DepositStatus?
+  usedAmount      Decimal?               @db.Decimal(10, 2)
+  refundAmount    Decimal?               @db.Decimal(10, 2)
+  forfeitedAmount Decimal?               @db.Decimal(10, 2)
+  reason          DepositReason?
+  reasonNotes     String?
+  decidedAt       DateTime?
+  notes           String?
+  createdAt       DateTime               @default(now())
+  // NOT NULL in the DB with no default — Prisma must set it on create/update.
+  updatedAt       DateTime               @updatedAt
+
+  @@index([status])
+  @@map("deposit_transactions")
+}

@@ -4,6 +4,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { getSystemActorId } from "@/lib/system-actor";
 import { expandEntrySlots } from "@/lib/booking-entries";
 import { canCancelEntries } from "@/app/tracking/status-map";
+import { forfeitCancelledEntries } from "@/lib/deposit-forfeit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,9 +25,13 @@ interface CancelEntriesBody {
  * which slots to drop — for form bookings they are identified by the name the
  * customer filled in, so the right one goes.
  *
- * The deposit for the dropped slots is NOT refunded (shop terms), so no money
- * field is touched here: `depositPaid` stays as-is and the admin's billing math
- * keeps working off it.
+ * The deposit for the dropped slots is NOT refunded (shop terms) — it is
+ * forfeited on the spot, proportionally to how many slots went: the ledger gets
+ * a ยึดมัดจำ row worth `depositPaid / totalEntries * removed` so the admin sees
+ * it on the "มัดจำ" page without having to settle anything by hand.
+ * `booking.depositPaid` itself stays as-is — it records what the customer
+ * actually transferred — and the forfeited part is netted out of the deposit the
+ * final bill credits back (yoye-admin bill prefill).
  *
  * Only allowed while the customer is still filling in ข้อมูลเชิงลึก (see
  * canCancelEntries) — not merely "before pressing". Past that point the ค่าบัตร
@@ -83,6 +88,8 @@ export async function DELETE(
         id: true,
         status: true,
         deletedAt: true,
+        eventId: true,
+        depositPaid: true,
         customer: { select: { lineUserId: true } },
         event: { select: { type: true } },
         bookingItems: {
@@ -169,12 +176,26 @@ export async function DELETE(
         });
       }
 
+      // ยึดมัดจำตามจำนวนใบ/รายชื่อที่ยกเลิก ทันที
+      const forfeited = await forfeitCancelledEntries(tx, {
+        bookingId,
+        eventId: booking.eventId,
+        depositPaid: booking.depositPaid,
+        totalEntries: total,
+        removedEntries: removeSet.size,
+        unitWord,
+      });
+
       await tx.bookingStatusLog.create({
         data: {
           bookingId,
           changedBy: systemActorId,
           status: booking.status,
-          notes: `ลูกค้ายกเลิก ${removeSet.size} ${unitWord} เอง (เหลือ ${kept.length} ${unitWord}) — ไม่คืนมัดจำส่วนที่ลดลง`,
+          notes:
+            `ลูกค้ายกเลิก ${removeSet.size} ${unitWord} เอง (เหลือ ${kept.length} ${unitWord})` +
+            (forfeited > 0
+              ? ` — ยึดมัดจำ ฿${forfeited.toLocaleString("th-TH")}`
+              : " — ไม่คืนมัดจำส่วนที่ลดลง"),
         },
       });
     });
