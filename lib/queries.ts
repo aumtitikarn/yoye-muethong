@@ -13,6 +13,8 @@ import {
   fetchServiceFeeInfo,
   fetchTicketFeeInfo,
   fetchRefundInfo,
+  fetchRewards,
+  submitRewardRequest,
   fetchReviews,
   fetchReviewStats,
   saveDeepInfoResponses,
@@ -20,6 +22,7 @@ import {
   PaymentAuthError,
   type SaveDeepInfoInput,
   type RefundInfoInput,
+  type SubmitRewardInput,
 } from "./api";
 
 /**
@@ -225,5 +228,23 @@ export function useReviewStatsQuery() {
     staleTime: REVIEWS_STALE_MS,
     gcTime: REVIEWS_GC_MS,
     refetchOnWindowFocus: false,
+  });
+}
+
+/** Server state: บัตรสะสมแต้มของลูกค้าที่ login อยู่ */
+export function useRewardsQuery() {
+  return useQuery({
+    queryKey: ["rewards"],
+    queryFn: ({ signal }) => fetchRewards(signal),
+    staleTime: 30_000,
+  });
+}
+
+/** ส่งลิงก์รีวิวขอแต้ม แล้วรีเฟรชการ์ดแต้มให้เห็นคำขอใหม่ทันที */
+export function useSubmitRewardRequestMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SubmitRewardInput) => submitRewardRequest(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["rewards"] }),
   });
 }

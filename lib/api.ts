@@ -709,3 +709,89 @@ export async function fetchReviewStats(
     json.data ?? { totalVisitors: 0, totalBookings: 0, successPresses: 0 }
   );
 }
+
+// ── บัตรสะสมแต้ม ────────────────────────────────────────────────────────────
+
+export interface RewardSummaryDTO {
+  currentPoints: number;
+  redemptionCost: number;
+  availableRedemptions: number;
+  pointsToNext: number;
+  activeRedemptions: { id: number; eventName: string; usedAt: string }[];
+  requests: {
+    id: number;
+    eventName: string;
+    status: string;
+    reviewLink: string;
+    rejectionReason: string | null;
+    createdAt: string;
+  }[];
+  ledger: {
+    id: number;
+    amount: number;
+    reason: string;
+    note: string | null;
+    eventName: string | null;
+    createdAt: string;
+  }[];
+  eligibleBookings: { bookingCode: string; eventName: string }[];
+}
+
+export type FetchRewardsResult =
+  | { ok: true; summary: RewardSummaryDTO }
+  | { ok: false; status: number; error: string };
+
+/**
+ * แต้มสะสมของลูกค้าที่ login อยู่ — คืนเป็น discriminated result เหมือน
+ * fetchBookings เพื่อให้หน้าแยกได้ว่า "ยังไม่ล็อกอิน" (401) กับ error อื่น
+ */
+export async function fetchRewards(
+  signal?: AbortSignal
+): Promise<FetchRewardsResult> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/public/rewards`, {
+      signal,
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const json = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
+      return {
+        ok: false,
+        status: res.status,
+        error: json?.message ?? `โหลดข้อมูลแต้มไม่สำเร็จ (${res.status})`,
+      };
+    }
+    const json = (await res.json()) as { data?: RewardSummaryDTO };
+    if (!json.data) return { ok: false, status: 0, error: "ข้อมูลไม่ครบ" };
+    return { ok: true, summary: json.data };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : "เชื่อมต่อไม่สำเร็จ",
+    };
+  }
+}
+
+export interface SubmitRewardInput {
+  bookingCode: string;
+  reviewLink: string;
+  notes?: string;
+}
+
+/** ส่งลิงก์รีวิวเพื่อขอแต้ม — โยน error พร้อมข้อความจาก API ให้หน้าจอโชว์ */
+export async function submitRewardRequest(input: SubmitRewardInput): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/public/rewards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    throw new Error(json?.message ?? `ส่งคำขอไม่สำเร็จ (${res.status})`);
+  }
+}

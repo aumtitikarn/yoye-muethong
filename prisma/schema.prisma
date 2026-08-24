@@ -111,34 +111,40 @@ model Customer {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  bookings Booking[]
+  // rewards: denormalized counter (cache) — reward_ledger is the source of truth
+  currentPoints Int @default(0)
+
+  bookings          Booking[]
+  rewardRequests    RewardRequest[]
+  rewardLedger      RewardLedger[]
+  rewardRedemptions RewardRedemption[]
 
   @@map("customers")
 }
 
 model Booking {
-  id            Int           @id @default(autoincrement())
-  bookingCode   String        @unique
-  eventId       Int
-  customerId    Int
-  nameCustomer  String?
-  status        BookingStatus @default(QUEUE_BOOKED)
-  paymentStatus PaymentStatus @default(UNPAID)
+  id                Int                @id @default(autoincrement())
+  bookingCode       String             @unique
+  eventId           Int
+  customerId        Int
+  nameCustomer      String?
+  status            BookingStatus      @default(QUEUE_BOOKED)
+  paymentStatus     PaymentStatus      @default(UNPAID)
   /// ลูกค้าเลือกวิธีชำระค่าบัตรตอนกรอกข้อมูลจอง — null = ยังไม่ได้เลือก / งานฟอร์ม
   ticketPaymentMode TicketPaymentMode?
-  netCardPrice  Float         @default(0)
-  serviceFee    Float         @default(0)
-  shippingFee   Float         @default(0)
-  vatAmount     Float         @default(0)
-  depositPaid   Float         @default(0)
-  totalPaid     Float         @default(0)
-  refundAmount  Float         @default(0)
-  isActive      Boolean       @default(true)
-  notes         String?
-  createdAt     DateTime      @default(now())
+  netCardPrice      Float              @default(0)
+  serviceFee        Float              @default(0)
+  shippingFee       Float              @default(0)
+  vatAmount         Float              @default(0)
+  depositPaid       Float              @default(0)
+  totalPaid         Float              @default(0)
+  refundAmount      Float              @default(0)
+  isActive          Boolean            @default(true)
+  notes             String?
+  createdAt         DateTime           @default(now())
   // NOT NULL in the DB with no default — Prisma must set it on create/update.
-  updatedAt     DateTime      @updatedAt
-  deletedAt     DateTime?
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
 
   customer              Customer               @relation(fields: [customerId], references: [id])
   event                 Event                  @relation(fields: [eventId], references: [id])
@@ -149,6 +155,8 @@ model Booking {
   refundRequests        RefundRequest[]
   statusLogs            BookingStatusLog[]
   ticketPaymentRequests TicketPaymentRequest[]
+  rewardRequest         RewardRequest?
+  rewardRedemption      RewardRedemption?
 
   @@map("bookings")
 }
@@ -223,9 +231,9 @@ model User {
   id    Int    @id @default(autoincrement())
   email String @unique
 
-  statusLogsChanged BookingStatusLog[]
-  paymentSlipsReviewed PaymentSlip[]    @relation("reviewer")
-  paymentSlipLogs      PaymentSlipLog[] @relation("paymentSlipLogs")
+  statusLogsChanged    BookingStatusLog[]
+  paymentSlipsReviewed PaymentSlip[]      @relation("reviewer")
+  paymentSlipLogs      PaymentSlipLog[]   @relation("paymentSlipLogs")
 
   @@map("users")
 }
@@ -296,7 +304,7 @@ model RefundRequest {
   payoutSlipUrl String?
   paidAt        DateTime?
   processedAt   DateTime?
-  requestedAt   DateTime     @default(now())
+  requestedAt   DateTime       @default(now())
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
@@ -360,9 +368,11 @@ model Event {
   createdAt             DateTime              @default(now())
   deletedAt             DateTime?
 
-  showRounds     ShowRound[]
-  bookings       Booking[]
-  deepInfoFields DeepInfoField[]
+  showRounds        ShowRound[]
+  bookings          Booking[]
+  deepInfoFields    DeepInfoField[]
+  rewardRequests    RewardRequest[]
+  rewardRedemptions RewardRedemption[]
 }
 
 // Admin-defined extra fields a customer fills in per event (read-only here).
@@ -382,13 +392,13 @@ model DeepInfoField {
 // Owned by yoye-admin (source of truth); the storefront writes them from the
 // booking detail page. Mirrors the admin table "deep_info_responses".
 model DeepInfoResponse {
-  id        Int      @id @default(autoincrement())
-  bookingId Int
-  fieldId   Int
+  id         Int      @id @default(autoincrement())
+  bookingId  Int
+  fieldId    Int
   /// 1-based ลำดับรายชื่อ/ใบที่คำตอบนี้เป็นของ (จองมา 3 รายชื่อ → 1, 2, 3).
-  entryIndex Int     @default(1)
-  value     String
-  createdAt DateTime @default(now())
+  entryIndex Int      @default(1)
+  value      String
+  createdAt  DateTime @default(now())
 
   booking Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   field   DeepInfoField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
@@ -519,4 +529,104 @@ model DepositTransaction {
 
   @@index([status])
   @@map("deposit_transactions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Customer Rewards — mirror of yoye-admin's schema (shared DB).
+// Tables are owned and migrated by yoye-admin; this repo only reads them and
+// creates reward_requests from the logged-in customer. Keep in sync manually —
+// never run `prisma migrate` here.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum RewardRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RewardLedgerType {
+  CREDIT
+  DEBIT
+}
+
+enum RewardLedgerReason {
+  REVIEW_APPROVED
+  REDEMPTION
+  REDEMPTION_CANCELLED
+  BOOKING_CANCELLED_REFUND
+  ADMIN_ADJUSTMENT
+}
+
+enum RewardRedemptionStatus {
+  ACTIVE
+  CANCELLED
+}
+
+model RewardRequest {
+  id              Int                 @id @default(autoincrement())
+  customerId      Int
+  bookingId       Int                 @unique
+  eventId         Int
+  reviewLink      String
+  proofLink       String?
+  notes           String?
+  status          RewardRequestStatus @default(PENDING)
+  rejectionReason String?
+  reviewerId      Int?
+  reviewedAt      DateTime?
+  source          String              @default("PUBLIC")
+  ipAddress       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  booking  Booking  @relation(fields: [bookingId], references: [id])
+  event    Event    @relation(fields: [eventId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([customerId, status])
+  @@map("reward_requests")
+}
+
+model RewardLedger {
+  id           Int                @id @default(autoincrement())
+  customerId   Int
+  amount       Int
+  type         RewardLedgerType
+  reason       RewardLedgerReason
+  requestId    Int?
+  redemptionId Int?
+  bookingId    Int?
+  note         String?
+  createdById  Int?
+  createdAt    DateTime           @default(now())
+
+  customer   Customer          @relation(fields: [customerId], references: [id])
+  redemption RewardRedemption? @relation(fields: [redemptionId], references: [id])
+
+  @@index([customerId, createdAt])
+  @@map("reward_ledger")
+}
+
+model RewardRedemption {
+  id                 Int                    @id @default(autoincrement())
+  customerId         Int
+  eventId            Int
+  bookingId          Int                    @unique
+  status             RewardRedemptionStatus @default(ACTIVE)
+  cancellationReason String?
+  cancelledById      Int?
+  cancelledAt        DateTime?
+  createdById        Int?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  customer Customer       @relation(fields: [customerId], references: [id])
+  event    Event          @relation(fields: [eventId], references: [id])
+  booking  Booking        @relation(fields: [bookingId], references: [id])
+  ledger   RewardLedger[]
+
+  @@index([customerId])
+  @@index([eventId, status])
+  @@map("reward_redemptions")
 }
