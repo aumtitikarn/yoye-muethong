@@ -14,6 +14,37 @@ export const dynamic = "force-dynamic";
 
 const MAX_REVIEW_LINK = 500;
 const MAX_NOTES = 500;
+const MAX_PROOF_BYTES = 8 * 1024 * 1024; // 8MB (ก่อน encode เป็น base64)
+
+/**
+ * ส่งรูปหลักฐานไปให้ yoye-admin เก็บ แล้วเอา URL กลับมาใส่ proofLink
+ *
+ * repo นี้ไม่มี uploader (ไม่มี dep ssh2-sftp-client) ส่วน yoye-admin เป็นเจ้าของ
+ * storage อยู่แล้ว จึงยิงข้ามไปที่นั่นแทนการลง dep ซ้ำสองที่
+ *
+ * โยน error เมื่ออัปโหลดไม่สำเร็จ — ไม่ยอมบันทึกคำขอแบบเงียบ ๆ โดยไม่มีรูป
+ * เพราะลูกค้าเลือกแนบมาแล้วและจะเข้าใจว่าแอดมินได้รับรูปด้วย
+ */
+async function uploadProof(imageDataUrl: string): Promise<string> {
+  const base = process.env.ADMIN_API_URL?.replace(/\/+$/, "");
+  const key = process.env.INTERNAL_API_KEY;
+  if (!base || !key) {
+    throw new Error("ระบบยังไม่พร้อมรับรูป กรุณาส่งเฉพาะลิงก์รีวิว");
+  }
+  const res = await fetch(`${base}/api/v1/public/reward-proofs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-internal-key": key },
+    body: JSON.stringify({ imageDataUrl }),
+  });
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(json?.message ?? "อัปโหลดรูปไม่สำเร็จ");
+  }
+  const json = (await res.json()) as { data?: { url?: string } };
+  const url = json.data?.url;
+  if (!url) throw new Error("อัปโหลดรูปไม่สำเร็จ");
+  return url;
+}
 
 export interface RewardSummaryDTO {
   currentPoints: number;
@@ -184,7 +215,12 @@ export async function POST(req: NextRequest) {
   }
   const customerId = resolved.customer.id;
 
-  let body: { bookingCode?: unknown; reviewLink?: unknown; notes?: unknown };
+  let body: {
+    bookingCode?: unknown;
+    reviewLink?: unknown;
+    notes?: unknown;
+    proofImageDataUrl?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -194,6 +230,8 @@ export async function POST(req: NextRequest) {
   const bookingCode = typeof body.bookingCode === "string" ? body.bookingCode.trim() : "";
   const reviewLink = typeof body.reviewLink === "string" ? body.reviewLink.trim() : "";
   const notes = typeof body.notes === "string" ? body.notes.trim() : "";
+  const proofImageDataUrl =
+    typeof body.proofImageDataUrl === "string" ? body.proofImageDataUrl : "";
 
   if (!bookingCode) {
     return NextResponse.json({ message: "กรุณาเลือกงานที่ต้องการรับแต้ม" }, { status: 400 });
@@ -203,6 +241,10 @@ export async function POST(req: NextRequest) {
   }
   if (notes.length > MAX_NOTES) {
     return NextResponse.json({ message: "หมายเหตุยาวเกินไป" }, { status: 400 });
+  }
+  // base64 ยาวกว่าไฟล์จริงราว 4/3 — เช็คคร่าว ๆ ที่นี่ก่อนยิงข้าม service
+  if (proofImageDataUrl && proofImageDataUrl.length > MAX_PROOF_BYTES * 1.4) {
+    return NextResponse.json({ message: "ไฟล์รูปใหญ่เกิน 8MB" }, { status: 400 });
   }
   // กันการแปะข้อความมั่ว ๆ ที่ไม่ใช่ลิงก์ — แอดมินต้องกดเปิดดูได้จริง
   if (!/^https?:\/\/\S+$/i.test(reviewLink)) {
@@ -247,12 +289,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "งานนี้ส่งคำขอแต้มไปแล้ว" }, { status: 409 });
     }
 
+    // อัปโหลดก่อนเขียน DB — ถ้ารูปพัง จะได้ไม่มีแถวคำขอค้างแบบไม่มีหลักฐาน
+    let proofLink: string | null = null;
+    if (proofImageDataUrl) {
+      try {
+        proofLink = await uploadProof(proofImageDataUrl);
+      } catch (err) {
+        return NextResponse.json(
+          { message: err instanceof Error ? err.message : "อัปโหลดรูปไม่สำเร็จ" },
+          { status: 502 },
+        );
+      }
+    }
+
     const request = await prisma.rewardRequest.create({
       data: {
         customerId,
         bookingId: booking.id,
         eventId: booking.eventId,
         reviewLink,
+        proofLink,
         notes: notes || null,
         source: "PUBLIC",
       },

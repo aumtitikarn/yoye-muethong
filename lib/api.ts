@@ -779,6 +779,8 @@ export interface SubmitRewardInput {
   bookingCode: string;
   reviewLink: string;
   notes?: string;
+  /** data URL ของรูปหลักฐาน — yoye-admin เป็นคนเก็บไฟล์ให้ */
+  proofImageDataUrl?: string;
 }
 
 /** ส่งลิงก์รีวิวเพื่อขอแต้ม — โยน error พร้อมข้อความจาก API ให้หน้าจอโชว์ */

@@ -29,6 +29,9 @@ const thaiDateTime = new Intl.DateTimeFormat("th-TH-u-ca-buddhist", {
 
 const fmtDate = (iso: string) => thaiDateTime.format(new Date(iso));
 
+const MAX_PROOF_BYTES = 8 * 1024 * 1024;
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
+
 const statusTone: Record<string, string> = {
   PENDING: "bg-amber-50 text-amber-700 border-amber-200",
   APPROVED: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -42,6 +45,8 @@ export default function RewardsPage() {
   const [bookingCode, setBookingCode] = useState("");
   const [reviewLink, setReviewLink] = useState("");
   const [notes, setNotes] = useState("");
+  const [proofDataUrl, setProofDataUrl] = useState("");
+  const [proofName, setProofName] = useState("");
 
   const summary = data?.ok ? data.summary : null;
   const isUnauthed = data?.ok === false && data.status === 401;
@@ -55,6 +60,28 @@ export default function RewardsPage() {
     return ((currentPoints % redemptionCost) / redemptionCost) * 100;
   }, [summary]);
 
+  const handleProofFile = (file: File | undefined) => {
+    if (!file) {
+      setProofDataUrl("");
+      setProofName("");
+      return;
+    }
+    if (!ALLOWED_MIME.includes(file.type)) {
+      toast.error("รองรับเฉพาะ JPG / PNG / WEBP");
+      return;
+    }
+    if (file.size > MAX_PROOF_BYTES) {
+      toast.error("ไฟล์ใหญ่เกิน 8MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setProofDataUrl(String(reader.result ?? ""));
+      setProofName(file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!bookingCode) {
@@ -66,13 +93,20 @@ export default function RewardsPage() {
       return;
     }
     submit.mutate(
-      { bookingCode, reviewLink: reviewLink.trim(), notes: notes.trim() || undefined },
+      {
+        bookingCode,
+        reviewLink: reviewLink.trim(),
+        notes: notes.trim() || undefined,
+        proofImageDataUrl: proofDataUrl || undefined,
+      },
       {
         onSuccess: () => {
           toast.success("ส่งคำขอแล้ว รอแอดมินตรวจสอบนะคะ");
           setBookingCode("");
           setReviewLink("");
           setNotes("");
+          setProofDataUrl("");
+          setProofName("");
         },
         onError: (err: unknown) =>
           toast.error(err instanceof Error ? err.message : "ส่งคำขอไม่สำเร็จ"),
@@ -222,6 +256,22 @@ export default function RewardsPage() {
                   <p className="text-xs text-muted-foreground">
                     อย่าลืมติด #ยยมือทองกดบัตร + #ชื่องาน และแนบรูปหรือวิดีโอในโพสต์
                     · โพสต์ต้องเปิดสาธารณะให้แอดมินกดดูได้
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="rw-proof">แนบรูปหลักฐาน (ถ้ามี)</Label>
+                  <Input
+                    id="rw-proof"
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={(e) => handleProofFile(e.target.files?.[0])}
+                  />
+                  {proofName && (
+                    <p className="text-xs text-emerald-700">แนบแล้ว: {proofName}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    เช่น สกรีนช็อตโพสต์รีวิว · JPG / PNG / WEBP ไม่เกิน 8MB
                   </p>
                 </div>
 
