@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { LogOut } from "lucide-react";
+import { LogOut, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -143,6 +143,14 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
             )}
           </div>
         </div>
+        <div className="my-1 h-px bg-border" />
+        <a
+          href="/rewards"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground hover:bg-muted/60 transition"
+        >
+          <Ticket className="h-4 w-4" />
+          บัตรสะสมแต้ม
+        </a>
         <div className="my-1 h-px bg-border" />
         <button
           onClick={handleLogout}

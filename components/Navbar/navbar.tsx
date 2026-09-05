@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Home, Calendar, Search, MessageSquare, Ticket } from "lucide-react";
+import { Home, Calendar, Search, MessageSquare } from "lucide-react";
 import AuthButton from "@/components/Navbar/AuthButton";
 
 const navItems = [
@@ -10,7 +10,6 @@ const navItems = [
   { label: "จองคิว", href: "bookings", path: "/bookings", icon: Calendar },
   { label: "ติดตามสถานะ", href: "tracking", path: "/tracking", icon: Search },
   { label: "รีวิว", href: "reviews", path: "/reviews", icon: MessageSquare },
-  { label: "สะสมแต้ม", href: "rewards", path: "/rewards", icon: Ticket },
 ];
 
 export default function Navbar() {
